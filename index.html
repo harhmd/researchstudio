@@ -1354,6 +1354,7 @@
         function renderTribunalWorkspace(container) {
             let readyCount = 0;
             systemAgents.forEach(a => { if(state.data[a.id].status === 'Approved') readyCount++; });
+            const anyReady = readyCount > 0;
             const allReady = readyCount === systemAgents.length;
 
             let cardsHtml = '';
@@ -1372,8 +1373,20 @@
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
                     <div>
                         <h3 class="text-2xl font-bold text-white mb-1"><i class="fa-solid fa-scale-balanced text-accent-purple mr-3"></i>The Master Tribunal</h3>
-                        <p class="text-sm text-slate-400">Aggregates all chapter inputs for APA 7 compliance checking, flow optimization, and humanization.</p>
+                        <p class="text-sm text-slate-400">Aggregates thesis chapter inputs for APA 7 compliance checking, flow optimization, and humanization.</p>
                     </div>
+
+                    ${anyReady && !allReady ? `
+                    <div class="bg-dark-800/80 border border-amber-500/30 rounded-xl p-3.5 flex items-center gap-3 text-xs text-amber-300 shadow-sm">
+                        <i class="fa-solid fa-circle-info text-accent-amber text-base"></i>
+                        <span><strong>Partial Review Mode:</strong> ${readyCount} of ${systemAgents.length} components approved. You can run the Tribunal now to audit ready sections, check preliminary flow, and receive recommendations for pending chapters.</span>
+                    </div>` : ''}
+
+                    ${allReady ? `
+                    <div class="bg-dark-800/80 border border-emerald-500/30 rounded-xl p-3.5 flex items-center gap-3 text-xs text-emerald-300 shadow-sm">
+                        <i class="fa-solid fa-circle-check text-accent-green text-base"></i>
+                        <span><strong>Full Consensus Mode:</strong> All ${systemAgents.length} components approved! Ready for complete defense-readiness synthesis and scoring.</span>
+                    </div>` : ''}
 
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
                         ${cardsHtml}
@@ -1381,11 +1394,11 @@
 
                     <div class="bg-dark-800 border border-accent-purple/30 rounded-xl shadow-lg shadow-purple-500/10 p-6 flex flex-col sm:flex-row gap-6 items-center justify-between">
                         <div>
-                            <h4 class="text-lg font-semibold text-white mb-1">Full Consensus Review</h4>
-                            <p class="text-sm text-slate-400">Simulates a peer-review debate across all agents and outputs a unified, defense-ready critique.</p>
+                            <h4 class="text-lg font-semibold text-white mb-1">${allReady ? 'Full Consensus Review' : 'Consensus Review (Partial Approved Allowed)'}</h4>
+                            <p class="text-sm text-slate-400">Simulates a peer-review debate across evaluated agents and outputs a unified critique.</p>
                         </div>
-                        <button id="btn-tribunal" onclick="runFullTribunal()" class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-purple-500/25 transition-all ${!allReady ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}">
-                            <i class="fa-solid fa-gavel"></i> Run Full Consensus Review
+                        <button id="btn-tribunal" onclick="runFullTribunal()" class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-purple-500/25 transition-all ${!anyReady ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}">
+                            <i class="fa-solid fa-gavel"></i> ${allReady ? 'Run Full Consensus Review' : `Run Consensus Review (${readyCount}/${systemAgents.length} Ready)`}
                         </button>
                     </div>
 
@@ -1472,43 +1485,56 @@
         }
 
         async function runFullTribunal() {
-            let readyCount = 0;
-            systemAgents.forEach(a => { if(state.data[a.id].status === 'Approved') readyCount++; });
-            if (readyCount !== systemAgents.length) {
-                alert("All chapters and the Coherence Master must be 'Approved' before running the Master Tribunal.");
+            const approvedAgents = systemAgents.filter(a => state.data[a.id].status === 'Approved');
+            const pendingAgents = systemAgents.filter(a => state.data[a.id].status !== 'Approved');
+            const readyCount = approvedAgents.length;
+
+            if (readyCount === 0) {
+                alert("Please complete and approve at least one chapter review before running the Master Tribunal.");
                 return;
             }
 
+            const isFull = readyCount === systemAgents.length;
+
             state.isProcessing = true;
             const btn = document.getElementById('btn-tribunal');
-            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing...`;
+            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing (${readyCount}/${systemAgents.length})...`;
             btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
 
             document.getElementById('tribunal-wrapper').classList.remove('hidden');
-            document.getElementById('tribunal-output').innerHTML = `<div class="flex items-center gap-3 text-accent-purple"><div class="loader border-t-accent-purple"></div> The Tribunal is deliberating across all chapters (Rotator Active)...</div>`;
+            document.getElementById('tribunal-output').innerHTML = `
+                <div class="flex items-center gap-3 text-accent-purple">
+                    <div class="loader border-t-accent-purple"></div> 
+                    <span>The Master Tribunal is deliberating on ${readyCount} approved component(s) (${isFull ? 'Full Consensus' : 'Partial Stage Consensus'})...</span>
+                </div>
+            `;
 
             let aggregatedText = "";
-            systemAgents.forEach(a => {
-                aggregatedText += `\n\n[${a.title} Output Summary]:\n` + state.data[a.id].output.substring(0, 2500);
+            approvedAgents.forEach(a => {
+                aggregatedText += `\n\n[${a.title} Output Summary]:\n` + state.data[a.id].output.substring(0, 3000);
             });
 
-            const systemPrompt = `You are the Master Tribunal, the final arbiter for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture". You have received summaries of critiques from 6 specialized agents (Foundation, Theory, Methodology, Analysis, Synthesis, Coherence).
+            const systemPrompt = `You are the Master Tribunal, the final academic arbiter for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
             
-            Your job is to:
-            1. Provide a "Final Consensus Review" summarizing the overall readiness of the thesis.
-            2. Evaluate APA 7th Edition compliance across the provided data.
-            3. Act as a "Humanizer" to point out any remaining robotic phrasing or areas lacking a natural academic voice.
-            4. Provide a final defense-readiness score out of 100.
-            
-            Format clearly in Markdown.`;
+You have received audit evaluations for ${readyCount} component(s): ${approvedAgents.map(a => a.title).join(', ')}.
+${!isFull ? `Pending components not yet submitted: ${pendingAgents.map(a => a.title).join(', ')}.` : 'All thesis components have been audited.'}
 
-            const userPrompt = `Here are the critiques from the subordinate agents:\n\n${aggregatedText}\n\nPlease generate the Master Tribunal Consensus Report.`;
+Your job is to:
+1. Provide a "${isFull ? 'Master Consensus Review' : 'Partial Stage Consensus Review'}" summarizing the academic readiness, methodological rigor, and theoretical alignment of the evaluated sections.
+2. Evaluate APA 7th Edition compliance across the provided analyses.
+3. ${!isFull ? 'Identify cross-chapter gaps and offer concrete recommendations for the pending chapters (' + pendingAgents.map(a => a.title).join(', ') + ') to ensure seamless alignment.' : 'Evaluate the holistic "Golden Thread" across all 5 chapters and research objectives.'}
+4. Act as an expert "Academic Humanizer" to point out any robotic phrasing or synthetic tone.
+5. Provide a ${isFull ? 'final defense-readiness score' : 'current stage milestone progress score'} out of 100 with clear justification.
+
+Format clearly in structured GitHub Markdown with bold headings and bullet points.`;
+
+            const userPrompt = `Here are the audit critiques from the evaluated agents:\n\n${aggregatedText}\n\nPlease generate the Master Tribunal ${isFull ? 'Full Consensus' : 'Partial Consensus Milestone'} Report.`;
 
             try {
                 const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                 state.data.tribunal.output = responseText;
                 state.data.tribunal.status = 'Approved';
-                showToast(`Master Tribunal Consensus reached!`, 'success');
+                showToast(`Master Tribunal Consensus generated (${readyCount}/${systemAgents.length} components)!`, 'success');
             } catch(e) {
                 state.data.tribunal.output = `**Tribunal synthesis failed:**\n\n${e.message}`;
                 showToast(`Tribunal failed: ${e.message}`, 'error');
