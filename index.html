@@ -625,7 +625,16 @@
                 ch4: { text: '', output: '', status: 'Pending', isRunning: false },
                 ch5: { text: '', output: '', status: 'Pending', isRunning: false },
                 coherence: { text: '', output: '', status: 'Pending', isRunning: false },
-                tribunal: { output: '', status: 'Pending', isRunning: false }
+                tribunal: { output: '', status: 'Pending', isRunning: false },
+                correction: {
+                    text: '',
+                    fileName: '',
+                    output: '',
+                    parsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' },
+                    activeResultTab: 'all',
+                    status: 'Pending',
+                    isRunning: false
+                }
             }
         };
 
@@ -709,13 +718,21 @@
                 }
 
                 state.data[agentId].text = extractedText;
+                if (agentId === 'correction') {
+                    state.data.correction.fileName = filename;
+                    const fnEl = document.getElementById('correction-file-badge');
+                    if (fnEl) {
+                        fnEl.textContent = filename;
+                        fnEl.classList.remove('hidden');
+                    }
+                }
                 const words = extractedText.trim().split(/\s+/).length;
                 
                 // Update textarea and counter
-                const textarea = document.getElementById('chap-textarea');
+                const textarea = document.getElementById(agentId === 'correction' ? 'correction-textarea' : 'chap-textarea');
                 if (textarea) textarea.value = extractedText;
-                const wordEl = document.getElementById('word-count');
-                if (wordEl) wordEl.textContent = `${words} words`;
+                const wordEl = document.getElementById(agentId === 'correction' ? 'correction-word-count' : 'word-count');
+                if (wordEl) wordEl.textContent = `${words.toLocaleString()} words`;
 
                 showToast(`Extracted <strong>${words.toLocaleString()} words</strong> from ${filename}!`, 'success');
             } catch(err) {
@@ -1262,6 +1279,26 @@
                 ${isTribRunning ? '<div class="loader ml-auto border-t-accent-purple" style="width:14px;height:14px;border-width:2px;"></div>' : ''}
             `;
             nav.appendChild(tribBtn);
+
+            // Correction Tab (Agent 6 Reconstructor)
+            const isCorrectionActive = state.activeTab === 'correction';
+            const isCorrRunning = state.data.correction.isRunning;
+            const corrBtn = document.createElement('button');
+            corrBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-2 flex items-center gap-3 transition-all border border-teal-500/30 ${isCorrectionActive ? 'bg-accent-teal/20 text-white border-accent-teal/50' : 'text-accent-teal hover:bg-accent-teal/10'}`;
+            corrBtn.onclick = () => {
+                state.activeTab = 'correction';
+                renderSidebar();
+                renderWorkspace();
+            };
+            corrBtn.innerHTML = `
+                <i class="fa-solid fa-wand-magic-sparkles w-5 text-center ${isCorrRunning ? 'animate-spin text-accent-teal' : ''}"></i>
+                <div class="flex-1 truncate">
+                    <span class="text-sm font-bold block">Correction</span>
+                    <span class="text-[10px] text-teal-300/80 block">Agent 6 Reconstructor</span>
+                </div>
+                ${isCorrRunning ? '<div class="loader ml-auto border-t-accent-teal" style="width:14px;height:14px;border-width:2px;"></div>' : (state.data.correction.output ? '<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>' : '')}
+            `;
+            nav.appendChild(corrBtn);
         }
 
         function renderWorkspace() {
@@ -1270,6 +1307,8 @@
 
             if (state.activeTab === 'tribunal') {
                 renderTribunalWorkspace(container);
+            } else if (state.activeTab === 'correction') {
+                renderCorrectionWorkspace(container);
             } else {
                 renderAgentWorkspace(container);
             }
@@ -1465,6 +1504,518 @@
         }
 
         // ==========================================
+        // CORRECTION STUDIO & AGENT 6 RECONSTRUCTOR
+        // ==========================================
+
+        function renderCorrectionWorkspace(container) {
+            const corr = state.data.correction;
+            const corrWords = corr.text ? corr.text.trim().split(/\s+/).length : 0;
+            const isRunning = corr.isRunning;
+            const activeResultTab = corr.activeResultTab || 'all';
+
+            // Check loaded draft chapters in studio
+            const chWords = {
+                ch1: state.data.ch1.text ? state.data.ch1.text.trim().split(/\s+/).length : 0,
+                ch2: state.data.ch2.text ? state.data.ch2.text.trim().split(/\s+/).length : 0,
+                ch3: state.data.ch3.text ? state.data.ch3.text.trim().split(/\s+/).length : 0,
+                ch4: state.data.ch4.text ? state.data.ch4.text.trim().split(/\s+/).length : 0,
+                ch5: state.data.ch5.text ? state.data.ch5.text.trim().split(/\s+/).length : 0
+            };
+
+            const parsed = corr.parsedChapters || {};
+            const hasCh1 = !!(parsed.ch1 && parsed.ch1.trim());
+            const hasCh2 = !!(parsed.ch2 && parsed.ch2.trim());
+            const hasCh3 = !!(parsed.ch3 && parsed.ch3.trim());
+            const hasCh4 = !!(parsed.ch4 && parsed.ch4.trim());
+            const hasCh5 = !!(parsed.ch5 && parsed.ch5.trim());
+
+            // Determine active content to display
+            let activeContent = '';
+            let activeTitle = 'All Reconstructed Chapters & Thesis Synthesis';
+            if (activeResultTab === 'all') {
+                activeContent = corr.output || '';
+                activeTitle = 'Complete Thesis Reconstructions & Cross-Chapter Rephrasing';
+            } else if (activeResultTab === 'ch1') {
+                activeContent = parsed.ch1 || (corr.output ? 'No discrete Chapter 1 section parsed. See "All Chapters" view.' : '');
+                activeTitle = 'Chapter 1: Foundation & Problem Statement — Reconstructed';
+            } else if (activeResultTab === 'ch2') {
+                activeContent = parsed.ch2 || (corr.output ? 'No discrete Chapter 2 section parsed. See "All Chapters" view.' : '');
+                activeTitle = 'Chapter 2: Literature Review & Theorist Framework — Reconstructed';
+            } else if (activeResultTab === 'ch3') {
+                activeContent = parsed.ch3 || (corr.output ? 'No discrete Chapter 3 section parsed. See "All Chapters" view.' : '');
+                activeTitle = 'Chapter 3: Research Methodology & Sampling — Reconstructed';
+            } else if (activeResultTab === 'ch4') {
+                activeContent = parsed.ch4 || (corr.output ? 'No discrete Chapter 4 section parsed. See "All Chapters" view.' : '');
+                activeTitle = 'Chapter 4: Empirical Data Analysis & Findings — Reconstructed';
+            } else if (activeResultTab === 'ch5') {
+                activeContent = parsed.ch5 || (corr.output ? 'No discrete Chapter 5 section parsed. See "All Chapters" view.' : '');
+                activeTitle = 'Chapter 5: Synthesis, Discussion & Implications — Reconstructed';
+            }
+
+            const html = `
+                <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
+                    <!-- Header -->
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-end gap-3 mb-2">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <h3 class="text-2xl font-bold text-white flex items-center">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-accent-teal mr-3"></i>Correction Studio
+                                </h3>
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
+                                    Agent 6 Reconstructor
+                                </span>
+                            </div>
+                            <p class="text-sm text-slate-400">
+                                Upload your viva voce feedback, examiner critique, or supervisor correction report. Agent 6 reconstructs and rephrases affected chapters, automatically splitting the output into <strong>Chapter 1, Chapter 2, Chapter 3</strong>, and beyond.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${isRunning ? `
+                            <div class="px-3 py-1 rounded-md text-xs font-semibold bg-accent-teal/20 text-accent-teal border border-accent-teal/30 flex items-center gap-2 animate-pulse">
+                                <div class="loader border-t-accent-teal" style="width:12px;height:12px;border-width:2px;"></div>
+                                <span>Agent 6 Reconstructing...</span>
+                            </div>` : ''}
+                            <div class="px-3 py-1 rounded-md text-xs font-semibold border ${corr.status === 'Approved' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-dark-700 text-slate-300 border-dark-600'}">
+                                Status: ${corr.status}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Upload Correction File & Correction Notes -->
+                    <div class="bg-dark-800 border border-dark-700 rounded-xl p-5 shadow-lg space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-full bg-accent-teal/20 text-accent-teal flex items-center justify-center text-xs font-bold">1</span>
+                                Upload Correction File or Paste Examiner Critique
+                            </h4>
+                            <div class="flex items-center gap-2">
+                                <button onclick="insertSampleCorrection()" class="text-xs bg-dark-700 hover:bg-dark-600 text-teal-300 px-3 py-1.5 rounded-lg border border-teal-500/30 transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <i class="fa-solid fa-flask-vial"></i> Load Sample Viva Corrections
+                                </button>
+                                <button onclick="clearCorrectionInput()" class="text-xs bg-dark-700 hover:bg-rose-900/30 text-slate-400 hover:text-rose-300 px-2.5 py-1.5 rounded-lg border border-dark-600 transition-colors" title="Clear text">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Dropzone for Correction File (PDF, DOCX, DOC, TXT, MD) -->
+                        <div id="dropzone-correction" 
+                             ondragover="handleDragOver(event)" 
+                             ondragleave="handleDragLeave(event)" 
+                             ondrop="handleFileDrop(event, 'correction')"
+                             onclick="document.getElementById('file-input-correction').click()"
+                             class="bg-dark-900/70 border-2 border-dashed border-teal-500/30 rounded-xl p-5 flex flex-col items-center justify-center hover:border-accent-teal transition-all relative group cursor-pointer shadow-inner">
+                            
+                            <!-- Idle State -->
+                            <div id="upload-idle-correction" class="flex flex-col items-center text-center pointer-events-none">
+                                <div class="w-10 h-10 rounded-full bg-accent-teal/10 flex items-center justify-center text-accent-teal mb-2 group-hover:scale-110 transition-transform">
+                                    <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                                </div>
+                                <p class="text-xs font-semibold text-slate-200 mb-1">
+                                    Drop Correction Document Here, or <span class="text-accent-teal hover:underline font-bold">Browse</span>
+                                </p>
+                                <div class="flex flex-wrap items-center justify-center gap-2 mt-1.5">
+                                    <span class="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-400 font-semibold border border-rose-500/20">
+                                        <i class="fa-solid fa-file-pdf mr-1"></i>PDF
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-400 font-semibold border border-blue-500/20">
+                                        <i class="fa-solid fa-file-word mr-1"></i>DOCX / DOC
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
+                                        <i class="fa-solid fa-file-lines mr-1"></i>TXT / Markdown
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Loading State -->
+                            <div id="upload-loading-correction" class="hidden flex flex-col items-center text-center py-2 pointer-events-none">
+                                <div class="loader mb-2 border-t-accent-teal" style="width:28px;height:28px;border-width:3px;"></div>
+                                <p class="text-xs font-semibold text-accent-teal mb-0.5" id="upload-status-text-correction">
+                                    Extracting Document Text...
+                                </p>
+                                <p class="text-[10px] text-slate-400">100% Client-Side Privacy Extraction</p>
+                            </div>
+
+                            <input type="file" id="file-input-correction" class="hidden" accept=".pdf,.docx,.doc,.txt,.md,.csv" onchange="handleFileInputChange(event, 'correction')">
+                        </div>
+
+                        <!-- Editable Textarea for Correction Instructions -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-medium text-slate-300">Correction Content & Instructions:</span>
+                                    ${corr.fileName ? `
+                                    <span id="correction-file-badge" class="text-[11px] px-2 py-0.5 rounded bg-dark-700 text-teal-300 border border-teal-500/30 flex items-center gap-1">
+                                        <i class="fa-solid fa-file-lines"></i> ${corr.fileName}
+                                    </span>` : ''}
+                                </div>
+                                <span class="text-xs text-slate-500" id="correction-word-count">${corrWords.toLocaleString()} words</span>
+                            </div>
+                            <textarea id="correction-textarea" 
+                                      rows="5" 
+                                      oninput="handleCorrectionTextChange(this.value)" 
+                                      placeholder="Upload your correction report above or paste the examiner's comments / viva critique directly here..."
+                                      class="w-full bg-dark-900 border border-dark-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-accent-teal transition-all font-mono placeholder:text-slate-600 resize-y leading-relaxed">${corr.text}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Source Chapters Status Matrix in Studio -->
+                    <div class="bg-dark-800 border border-dark-700 rounded-xl p-5 shadow-lg space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-full bg-accent-teal/20 text-accent-teal flex items-center justify-center text-xs font-bold">2</span>
+                                Thesis Draft Baseline in Studio
+                            </h4>
+                            <span class="text-xs text-slate-400">Agent 6 will cross-reference drafts with your correction requirements</span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            <div class="bg-dark-900/80 border ${chWords.ch1 > 0 ? 'border-blue-500/30 bg-blue-500/5' : 'border-dark-700'} rounded-lg p-3 text-center">
+                                <i class="fa-solid fa-file-lines text-blue-400 text-lg mb-1"></i>
+                                <div class="text-xs font-semibold text-slate-200">Chapter 1: Foundation</div>
+                                <div class="text-[11px] ${chWords.ch1 > 0 ? 'text-accent-green' : 'text-slate-500'} font-medium mt-0.5">
+                                    ${chWords.ch1 > 0 ? `${chWords.ch1.toLocaleString()} words` : 'Draft empty'}
+                                </div>
+                            </div>
+                            <div class="bg-dark-900/80 border ${chWords.ch2 > 0 ? 'border-teal-500/30 bg-teal-500/5' : 'border-dark-700'} rounded-lg p-3 text-center">
+                                <i class="fa-solid fa-book-open text-teal-400 text-lg mb-1"></i>
+                                <div class="text-xs font-semibold text-slate-200">Chapter 2: Theorist</div>
+                                <div class="text-[11px] ${chWords.ch2 > 0 ? 'text-accent-green' : 'text-slate-500'} font-medium mt-0.5">
+                                    ${chWords.ch2 > 0 ? `${chWords.ch2.toLocaleString()} words` : 'Draft empty'}
+                                </div>
+                            </div>
+                            <div class="bg-dark-900/80 border ${chWords.ch3 > 0 ? 'border-purple-500/30 bg-purple-500/5' : 'border-dark-700'} rounded-lg p-3 text-center">
+                                <i class="fa-solid fa-flask text-purple-400 text-lg mb-1"></i>
+                                <div class="text-xs font-semibold text-slate-200">Chapter 3: Methodologist</div>
+                                <div class="text-[11px] ${chWords.ch3 > 0 ? 'text-accent-green' : 'text-slate-500'} font-medium mt-0.5">
+                                    ${chWords.ch3 > 0 ? `${chWords.ch3.toLocaleString()} words` : 'Draft empty'}
+                                </div>
+                            </div>
+                            <div class="bg-dark-900/80 border ${chWords.ch4 > 0 ? 'border-pink-500/30 bg-pink-500/5' : 'border-dark-700'} rounded-lg p-3 text-center">
+                                <i class="fa-solid fa-chart-pie text-pink-400 text-lg mb-1"></i>
+                                <div class="text-xs font-semibold text-slate-200">Chapter 4: Analyst</div>
+                                <div class="text-[11px] ${chWords.ch4 > 0 ? 'text-accent-green' : 'text-slate-500'} font-medium mt-0.5">
+                                    ${chWords.ch4 > 0 ? `${chWords.ch4.toLocaleString()} words` : 'Draft empty'}
+                                </div>
+                            </div>
+                            <div class="bg-dark-900/80 border ${chWords.ch5 > 0 ? 'border-amber-500/30 bg-amber-500/5' : 'border-dark-700'} rounded-lg p-3 text-center">
+                                <i class="fa-solid fa-bullseye text-amber-400 text-lg mb-1"></i>
+                                <div class="text-xs font-semibold text-slate-200">Chapter 5: Synthesizer</div>
+                                <div class="text-[11px] ${chWords.ch5 > 0 ? 'text-accent-green' : 'text-slate-500'} font-medium mt-0.5">
+                                    ${chWords.ch5 > 0 ? `${chWords.ch5.toLocaleString()} words` : 'Draft empty'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Action Trigger -->
+                    <div class="bg-dark-800 border border-teal-500/30 rounded-xl shadow-lg shadow-teal-500/10 p-5 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                        <div>
+                            <h4 class="text-base font-semibold text-white mb-0.5">Reconstruct & Rephrase Chapters (Agent 6)</h4>
+                            <p class="text-xs text-slate-400">
+                                Agent 6 will split corrections by chapter and generate scholarly reconstructed drafts for Chapter 1, Chapter 2, Chapter 3, etc.
+                            </p>
+                        </div>
+                        <button id="btn-run-correction" 
+                                onclick="runAgent6Correction()" 
+                                class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-teal to-teal-600 hover:from-teal-500 hover:to-teal-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-teal-500/25 transition-all ${isRunning ? 'opacity-75 cursor-not-allowed pointer-events-none' : 'active:scale-95'}">
+                            ${isRunning 
+                                ? '<div class="loader mr-2 border-t-white border-white/30"></div> Reconstructing Chapters...' 
+                                : '<i class="fa-solid fa-wand-magic-sparkles"></i> Reconstruct & Split by Chapters'}
+                        </button>
+                    </div>
+
+                    <!-- Step 4: Output & Split Chapters Panel -->
+                    <div id="correction-wrapper" class="border border-dark-700 rounded-xl bg-dark-900 shadow-xl overflow-hidden ${corr.output || isRunning ? '' : 'hidden'}">
+                        
+                        <!-- Chapter Tabs Navigation -->
+                        <div class="bg-dark-800 px-4 py-3 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button onclick="switchCorrectionResultTab('all')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'all' ? 'bg-accent-teal text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-layer-group"></i> All Chapters
+                                </button>
+                                <button onclick="switchCorrectionResultTab('ch1')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 ${hasCh1 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchCorrectionResultTab('ch2')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-book-open text-teal-400"></i> Chapter 2 ${hasCh2 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchCorrectionResultTab('ch3')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-flask text-purple-400"></i> Chapter 3 ${hasCh3 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchCorrectionResultTab('ch4')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-chart-pie text-pink-400"></i> Chapter 4 ${hasCh4 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchCorrectionResultTab('ch5')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 ${hasCh5 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                ${activeResultTab !== 'all' ? `
+                                <button onclick="applyReconstructedChapter('${activeResultTab}')" 
+                                        class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-1.5" 
+                                        title="Sync this reconstructed text directly into the Chapter workspace">
+                                    <i class="fa-solid fa-file-import"></i> Apply to ${activeResultTab.toUpperCase()} in Studio
+                                </button>
+                                ` : ''}
+                                <button onclick="copyCurrentCorrectionTab()" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5">
+                                    <i class="fa-solid fa-copy"></i> Copy Text
+                                </button>
+                                <button onclick="downloadOutput('correction')" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5">
+                                    <i class="fa-solid fa-download"></i> Export All (.md)
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Active Tab Header & Info -->
+                        <div class="bg-dark-850 px-6 py-2.5 border-b border-dark-750 flex items-center justify-between text-xs">
+                            <span class="font-semibold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-circle-info text-accent-teal"></i> ${activeTitle}
+                            </span>
+                            ${activeResultTab !== 'all' ? `
+                            <span class="text-slate-400">
+                                Click <strong class="text-accent-green">"Apply to ${activeResultTab.toUpperCase()} in Studio"</strong> to update your chapter workspace.
+                            </span>` : ''}
+                        </div>
+
+                        <!-- Markdown Content Area -->
+                        <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[220px]" id="correction-output">
+                            ${isRunning 
+                                ? '<div class="flex items-center gap-3 text-accent-teal"><div class="loader border-t-accent-teal"></div> <span>Agent 6 is parsing corrections, restructuring argument flows, and rephrasing chapters concurrently in the background... (You can switch tabs freely)</span></div>' 
+                                : (activeContent ? marked.parse(activeContent) : '<div class="text-slate-500 italic">No content available for this section yet. Click "Reconstruct & Split by Chapters" to generate.</div>')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function handleCorrectionTextChange(val) {
+            state.data.correction.text = val;
+            const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+            const el = document.getElementById('correction-word-count');
+            if (el) el.textContent = `${words.toLocaleString()} words`;
+        }
+
+        function clearCorrectionInput() {
+            state.data.correction.text = '';
+            state.data.correction.fileName = '';
+            const ta = document.getElementById('correction-textarea');
+            if (ta) ta.value = '';
+            const wc = document.getElementById('correction-word-count');
+            if (wc) wc.textContent = '0 words';
+            const badge = document.getElementById('correction-file-badge');
+            if (badge) badge.classList.add('hidden');
+            showToast('Correction input cleared.', 'info');
+        }
+
+        function insertSampleCorrection() {
+            const sample = `EXAMINER & VIVA VOCE CORRECTION LIST:
+
+1. Chapter 1 (Foundation):
+- Problem Statement lacks clear empirical connection to the National Agro-Food Policy 2.0 (DAN 2.0). 
+- Explicitly highlight why smallholder farmers in Melaka (aging demographic 50+) show low digital literacy and trust deficits towards AI chatbots.
+- Align research objectives directly with the proposed research questions.
+
+2. Chapter 2 (Theorist & Literature Review):
+- The integration of Technology Readiness Index (TRI 2.0) and Technology Acceptance Model (TAM) into TRAM is insufficiently justified.
+- Clearly justify modeling 'Trust' and 'Satisfaction' as sequential mediators rather than direct predictors.
+- Update literature citations to include recent 2023-2025 empirical studies in precision agriculture chatbots.
+
+3. Chapter 3 (Methodology & Design):
+- G*Power sampling parameters (effect size f² = 0.15, alpha = 0.05, power = 0.80) must be clearly tabulated for the minimum sample size of n=256 smallholder farmers.
+- Detail the cross-sectional quantitative design and ethical considerations for farmer survey administration in Melaka.
+- Operationalize the measurement scales for Optimism, Innovativeness, Discomfort, Insecurity, Perceived Usefulness, and Ease of Use.
+
+4. Chapters 4 & 5:
+- Ensure measurement model evaluations (HTMT, AVE, Composite Reliability) and structural path coefficients directly reflect Chapter 1 research questions.
+- Discussion in Chapter 5 must propose practical interventions (e.g. voice-assisted vernacular chatbots and human-agent hybrid backups).`;
+
+            state.data.correction.text = sample;
+            state.data.correction.fileName = 'Sample_Viva_Corrections.txt';
+            const ta = document.getElementById('correction-textarea');
+            if (ta) ta.value = sample;
+            const wc = document.getElementById('correction-word-count');
+            if (wc) wc.textContent = `${sample.trim().split(/\s+/).length} words`;
+            showToast('Loaded sample viva corrections into editor!', 'info');
+            renderWorkspace();
+        }
+
+        function switchCorrectionResultTab(tabName) {
+            state.data.correction.activeResultTab = tabName;
+            if (state.activeTab === 'correction') {
+                renderWorkspace();
+            }
+        }
+
+        function parseCorrectionChapters(fullText) {
+            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' };
+            if (!fullText) return chapters;
+
+            const m1 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*1\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*2\b|$)/i);
+            if (m1) chapters.ch1 = m1[0].trim();
+
+            const m2 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*2\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*3\b|$)/i);
+            if (m2) chapters.ch2 = m2[0].trim();
+
+            const m3 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*3\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*4\b|$)/i);
+            if (m3) chapters.ch3 = m3[0].trim();
+
+            const m4 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*4\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*5\b|$)/i);
+            if (m4) chapters.ch4 = m4[0].trim();
+
+            const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*6\b|$)/i);
+            if (m5) chapters.ch5 = m5[0].trim();
+
+            return chapters;
+        }
+
+        function applyReconstructedChapter(chapId) {
+            const corr = state.data.correction;
+            const parsed = corr.parsedChapters || {};
+            const textToApply = parsed[chapId];
+            if (!textToApply) {
+                alert(`No reconstructed text found for ${chapId.toUpperCase()}.`);
+                return;
+            }
+
+            state.data[chapId].text = textToApply;
+            state.data[chapId].status = 'Approved';
+            showToast(`<strong>${chapId.toUpperCase()}</strong> has been updated in Studio with the reconstructed content!`, 'success');
+            renderSidebar();
+            if (state.activeTab === 'correction') {
+                renderWorkspace();
+            }
+        }
+
+        function copyCurrentCorrectionTab() {
+            const corr = state.data.correction;
+            const tab = corr.activeResultTab || 'all';
+            let textToCopy = '';
+            if (tab === 'all') {
+                textToCopy = corr.output || '';
+            } else {
+                textToCopy = (corr.parsedChapters && corr.parsedChapters[tab]) || '';
+            }
+            if (!textToCopy) {
+                alert('No content to copy.');
+                return;
+            }
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast(`Copied ${tab === 'all' ? 'all reconstructions' : tab.toUpperCase()} to clipboard!`, 'info');
+            }).catch(e => {
+                alert('Could not copy text: ' + e.message);
+            });
+        }
+
+        async function runAgent6Correction() {
+            const corr = state.data.correction;
+            if (corr.isRunning) return;
+
+            const text = corr.text.trim();
+            if (text.length < 20) {
+                alert("Please upload a correction document or paste at least a brief summary of the required corrections (at least 20 characters).");
+                return;
+            }
+
+            corr.isRunning = true;
+            renderSidebar();
+            if (state.activeTab === 'correction') {
+                renderWorkspace();
+            }
+
+            showToast("🚀 <strong>Agent 6</strong> is reconstructing chapters based on your correction guidelines...", "info");
+
+            const systemPrompt = `You are Agent 6: PhD Thesis Reconstructor & Multi-Chapter Rephraser.
+Your role is to execute comprehensive thesis revisions, reconstruct scholarly narrative flows, and rephrase thesis chapters based on examiner viva reports, supervisory critique, and correction lists.
+
+You are rigorous, deeply academic, and adhere strictly to APA 7th edition formatting and postgraduate doctoral standards.
+Your output must be divided cleanly into chapters so the student can review each chapter's revisions individually.
+
+REQUIRED OUTPUT STRUCTURE:
+For each chapter needing revision (prioritizing Chapter 1, Chapter 2, Chapter 3, plus Chapters 4 and 5 if relevant), you MUST use this exact header line format:
+
+### CHAPTER 1: RECONSTRUCTION & REPHRASED TEXT
+- **Corrections Addressed**: [Detailed bulleted summary of specific examiner comments resolved in this chapter]
+- **Reconstructed & Rephrased Academic Text**:
+[Provide the complete, professionally rewritten and rephrased chapter text ready to be inserted directly into the thesis manuscript, fixing all identified deficiencies]
+- **Methodological & Theoretical Justification**: [Explain why this reconstruction satisfies doctoral requirements]
+
+### CHAPTER 2: RECONSTRUCTION & REPHRASED TEXT
+- **Corrections Addressed**: [Summary of examiner comments resolved]
+- **Reconstructed & Rephrased Academic Text**:
+[Provide complete, rephrased chapter text]
+- **Methodological & Theoretical Justification**: [Explain rationale]
+
+### CHAPTER 3: RECONSTRUCTION & REPHRASED TEXT
+- **Corrections Addressed**: [Summary of examiner comments resolved]
+- **Reconstructed & Rephrased Academic Text**:
+[Provide complete, rephrased chapter text]
+- **Methodological & Theoretical Justification**: [Explain rationale]
+
+### CHAPTER 4: RECONSTRUCTION & REPHRASED TEXT
+- **Corrections Addressed**: [Summary of examiner comments resolved]
+- **Reconstructed & Rephrased Academic Text**:
+[Provide complete, rephrased chapter text]
+- **Methodological & Theoretical Justification**: [Explain rationale]
+
+### CHAPTER 5: RECONSTRUCTION & REPHRASED TEXT
+- **Corrections Addressed**: [Summary of examiner comments resolved]
+- **Reconstructed & Rephrased Academic Text**:
+[Provide complete, rephrased chapter text]
+- **Methodological & Theoretical Justification**: [Explain rationale]
+`;
+
+            const userPrompt = `HERE ARE THE CORRECTION REQUIREMENTS & EXAMINER FEEDBACK:
+---
+${corr.text}
+---
+
+HERE IS THE EXISTING THESIS DRAFT CONTEXT FROM THE STUDIO (IF ANY):
+[CHAPTER 1 CURRENT DRAFT]
+${state.data.ch1.text ? state.data.ch1.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 1 draft meeting the correction criteria.'}
+
+[CHAPTER 2 CURRENT DRAFT]
+${state.data.ch2.text ? state.data.ch2.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 2 draft meeting the correction criteria.'}
+
+[CHAPTER 3 CURRENT DRAFT]
+${state.data.ch3.text ? state.data.ch3.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 3 draft meeting the correction criteria.'}
+
+[CHAPTER 4 CURRENT DRAFT]
+${state.data.ch4.text ? state.data.ch4.text.substring(0, 10000) : 'Draft not yet loaded in studio.'}
+
+[CHAPTER 5 CURRENT DRAFT]
+${state.data.ch5.text ? state.data.ch5.text.substring(0, 10000) : 'Draft not yet loaded in studio.'}
+
+Please reconstruct each chapter and rephrase the content according to the required corrections. Ensure results are strictly split into Chapter 1, Chapter 2, Chapter 3 (and subsequent chapters if relevant).`;
+
+            try {
+                const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
+                corr.output = responseText;
+                corr.parsedChapters = parseCorrectionChapters(responseText);
+                corr.status = 'Approved';
+                corr.isRunning = false;
+                showToast("✨ <strong>Agent 6</strong> finished reconstructing and splitting chapters!", "success");
+            } catch(e) {
+                corr.output = `**Agent 6 Reconstruction failed:**\n\n${e.message}\n\n*Please verify your Gemini API key pool.*`;
+                corr.isRunning = false;
+                showToast(`Reconstruction failed: ${e.message}`, "error");
+            }
+
+            renderSidebar();
+            if (state.activeTab === 'correction') {
+                renderWorkspace();
+            }
+        }
+
+        // ==========================================
         // TEXT EDIT & EXPORT UTILITIES
         // ==========================================
 
@@ -1481,9 +2032,20 @@
         }
 
         function downloadOutput(id) {
-            const content = id === 'tribunal' ? state.data.tribunal.output : state.data[id].output;
+            let content = '';
+            let title = '';
+            if (id === 'tribunal') {
+                content = state.data.tribunal.output;
+                title = 'Tribunal_Report';
+            } else if (id === 'correction') {
+                content = state.data.correction.output;
+                title = 'Agent6_Correction_Reconstruction';
+            } else {
+                content = state.data[id].output;
+                title = `${id.toUpperCase()}_Report`;
+            }
             if (!content) return;
-            const filename = `ResearchStudio_${id.toUpperCase()}_Report_${new Date().toISOString().slice(0, 10)}.md`;
+            const filename = `ResearchStudio_${title}_${new Date().toISOString().slice(0, 10)}.md`;
             const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);

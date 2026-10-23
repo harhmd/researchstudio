@@ -20,8 +20,22 @@ The **PhD Research Studio** is a multi-agent academic auditing and peer-review p
 5. **Chapter 5: Synthesizer Agent** – Critiques discussion, theoretical/practical implications, multilingual design, human-in-the-loop backup, and limitations.
 6. **Coherence Master Agent** – Verifies the "Golden Thread" consistency across research questions, variables, and methodologies.
 7. **Master Tribunal** – Simulates a defense peer-review consensus across all chapters, evaluating defense readiness and generating an APA 7-compliant final report.
+8. **Agent 6 (Thesis Reconstructor & Multi-Chapter Rephraser)** – Powers the **Correction** studio to decode viva voce reports, reconstruct argument flows, and rephrase content split cleanly by chapter (Chapter 1, Chapter 2, Chapter 3, etc.).
 
 ---
+
+## ✍️ Correction Studio & Agent 6 Reconstructor
+
+The new **Correction** module streamlines post-viva and supervisory revisions:
+- **Correction Document Upload**: Upload examiner critique or viva feedback in **PDF**, **Word (`.docx`, `.doc`)**, **Markdown (`.md`)**, or **Text (`.txt`)**, or paste directly.
+- **Multi-Chapter Rephrasing**: Agent 6 evaluates the correction list against loaded thesis drafts and rewrites each affected chapter with elevated scholarly tone and APA 7 precision.
+- **Clean Chapter Split**: Reconstructions are organized into interactive tabs:
+  - **Chapter 1: Foundation**
+  - **Chapter 2: Theorist**
+  - **Chapter 3: Methodologist**
+  - **Chapters 4 & 5** (Analyst & Synthesizer)
+- **Direct Workspace Sync**: Use **"Apply to Chapter in Studio"** to instantly update any chapter draft with the newly reconstructed academic text.
+
 
 ## 📄 Document Upload & Extraction (PDF, DOC/DOCX)
 
