@@ -23,6 +23,16 @@ The **PhD Research Studio** is a multi-agent academic auditing and peer-review p
 
 ---
 
+## 📄 Document Upload & Extraction (PDF, DOC/DOCX)
+
+The platform supports seamless **drag-and-drop** and file browsing for thesis manuscripts:
+- **Adobe PDF (`.pdf`)**: Client-side parsing using Mozilla's **PDF.js**, extracting text sequentially page-by-page with page demarcations (`[Page X]`).
+- **Microsoft Word (`.docx`, `.doc`)**: Native extraction via **Mammoth.js**, preserving paragraphs, headings, bullet lists, and research notes.
+- **Plain Text (`.txt`, `.md`, `.csv`)**: Instant raw text loading.
+- **100% Client-Side Privacy**: Document text extraction is executed completely within your browser. No files are ever sent to external conversion servers or intermediate databases.
+
+---
+
 ## 🔄 Gemini API Key Rotation & Multi-Tier Pool
 
 The platform features an enterprise-grade **Gemini API Key Rotation Engine**:
