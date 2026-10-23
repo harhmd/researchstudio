@@ -650,6 +650,20 @@
                     agent7Running: false,
                     activeStage: 'agent7',
                     activeResultTab: 'all'
+                },
+                rephraser: {
+                    text: '',
+                    fileName: '',
+                    output: '',
+                    lengthMode: 'less50', // 'less50', 'exact', 'more50', 'custom'
+                    customPercent: -50,
+                    status: 'Pending',
+                    isRunning: false,
+                    stats: {
+                        originalWords: 0,
+                        rephrasedWords: 0,
+                        changePercent: 0
+                    }
                 }
             }
         };
@@ -741,14 +755,32 @@
                         fnEl.textContent = filename;
                         fnEl.classList.remove('hidden');
                     }
+                } else if (agentId === 'rephraser') {
+                    state.data.rephraser.fileName = filename;
+                    const fnEl = document.getElementById('rephraser-file-badge');
+                    if (fnEl) {
+                        fnEl.textContent = filename;
+                        fnEl.classList.remove('hidden');
+                    }
                 }
                 const words = extractedText.trim().split(/\s+/).length;
                 
                 // Update textarea and counter
-                const textarea = document.getElementById(agentId === 'correction' ? 'correction-textarea' : 'chap-textarea');
+                let textareaId = 'chap-textarea';
+                if (agentId === 'correction') textareaId = 'correction-textarea';
+                else if (agentId === 'rephraser') textareaId = 'rephraser-textarea';
+                const textarea = document.getElementById(textareaId);
                 if (textarea) textarea.value = extractedText;
-                const wordEl = document.getElementById(agentId === 'correction' ? 'correction-word-count' : 'word-count');
+
+                let wordElId = 'word-count';
+                if (agentId === 'correction') wordElId = 'correction-word-count';
+                else if (agentId === 'rephraser') wordElId = 'rephraser-word-count';
+                const wordEl = document.getElementById(wordElId);
                 if (wordEl) wordEl.textContent = `${words.toLocaleString()} words`;
+
+                if (agentId === 'rephraser' && typeof updateRephraserTargetEstimate === 'function') {
+                    updateRephraserTargetEstimate(words);
+                }
 
                 showToast(`Extracted <strong>${words.toLocaleString()} words</strong> from ${filename}!`, 'success');
             } catch(err) {
@@ -1318,6 +1350,27 @@
                 ${isAnyCorrRunning ? '<div class="loader ml-auto border-t-accent-teal" style="width:14px;height:14px;border-width:2px;"></div>' : (isCompleted ? '<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>' : '')}
             `;
             nav.appendChild(corrBtn);
+
+            // Rephraser Tab (Word Length Control, Turnitin & AI Humanizer)
+            const isRephraserActive = state.activeTab === 'rephraser';
+            const isRephraseRunning = state.data.rephraser.isRunning;
+            const isRephraseCompleted = state.data.rephraser.status === 'Approved';
+            const rephraseBtn = document.createElement('button');
+            rephraseBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-2 flex items-center gap-3 transition-all border border-indigo-500/30 ${isRephraserActive ? 'bg-indigo-600/20 text-white border-indigo-500/60' : 'text-indigo-400 hover:bg-indigo-500/10'}`;
+            rephraseBtn.onclick = () => {
+                state.activeTab = 'rephraser';
+                renderSidebar();
+                renderWorkspace();
+            };
+            rephraseBtn.innerHTML = `
+                <i class="fa-solid fa-arrows-rotate w-5 text-center ${isRephraseRunning ? 'animate-spin text-indigo-400' : ''}"></i>
+                <div class="flex-1 truncate">
+                    <span class="text-sm font-bold block">Rephraser</span>
+                    <span class="text-[10px] text-indigo-300/80 block">Turnitin & AI Humanizer</span>
+                </div>
+                ${isRephraseRunning ? '<div class="loader ml-auto border-t-indigo-400" style="width:14px;height:14px;border-width:2px;"></div>' : (isRephraseCompleted ? '<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>' : '')}
+            `;
+            nav.appendChild(rephraseBtn);
         }
 
         function renderWorkspace() {
@@ -1333,6 +1386,11 @@
                 renderCorrectionWorkspace(container);
                 setTimeout(() => {
                     renderMermaidInDom(document.getElementById('correction-output'));
+                }, 80);
+            } else if (state.activeTab === 'rephraser') {
+                renderRephraserWorkspace(container);
+                setTimeout(() => {
+                    renderMermaidInDom(document.getElementById('rephraser-output'));
                 }, 80);
             } else {
                 renderAgentWorkspace(container);
@@ -1987,6 +2045,546 @@
             const badge = document.getElementById('correction-file-badge');
             if (badge) badge.classList.add('hidden');
             showToast('Correction input cleared.', 'info');
+        }
+
+        // ==========================================
+        // REPHRASER STUDIO: LENGTH CONTROL & TURNITIN HUMANIZER
+        // ==========================================
+
+        function renderRephraserWorkspace(container) {
+            const rep = state.data.rephraser;
+            const repWords = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+            const isRunning = rep.isRunning;
+            const hasOutput = !!rep.output;
+            const lengthMode = rep.lengthMode || 'less50';
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
+
+            // Target word estimation calculation
+            let targetEstimateText = '';
+            if (repWords === 0) {
+                targetEstimateText = 'Paste text or upload file to project target words';
+            } else if (lengthMode === 'less50') {
+                const minW = Math.round(repWords * 0.55);
+                const maxW = Math.round(repWords * 0.75);
+                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ -35% to -50% reduction)`;
+            } else if (lengthMode === 'exact') {
+                const minW = Math.round(repWords * 0.95);
+                const maxW = Math.round(repWords * 1.05);
+                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ same length / 100%)`;
+            } else if (lengthMode === 'more50') {
+                const minW = Math.round(repWords * 1.35);
+                const maxW = Math.round(repWords * 1.55);
+                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ +35% to +55% expansion)`;
+            } else {
+                const targetW = Math.round(repWords * (1 + customPercent / 100));
+                targetEstimateText = `Projected Target: ~${targetW.toLocaleString()} words (${customPercent > 0 ? '+' : ''}${customPercent}%)`;
+            }
+
+            const html = `
+                <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
+                    
+                    <!-- Header -->
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-dark-700 pb-5">
+                        <div>
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                                    <i class="fa-solid fa-arrows-rotate text-white text-lg"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-2xl font-bold text-white tracking-tight">PhD Thesis Rephraser & Humanizer</h3>
+                                    <p class="text-xs text-slate-400">Transform manuscript length (-50% to +50%), eliminate AI artifacts, and ensure Turnitin (&lt;20% Plag, &lt;10% AI) compliance.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                                <i class="fa-solid fa-shield-halved text-accent-green"></i> Turnitin &lt; 20% &bull; AI Content &lt; 10%
+                            </span>
+                            <span class="text-xs bg-dark-800 border border-dark-700 text-slate-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-file-word text-blue-400"></i> Native Word Tables & PDF
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Ingestion & Input Area -->
+                    <div class="border border-dark-700 rounded-xl bg-dark-800/90 shadow-xl overflow-hidden p-6 space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">1</span>
+                                <h4 class="text-sm font-bold text-white uppercase tracking-wider">Input Document or Paste Manuscript</h4>
+                                <span id="rephraser-file-badge" class="${rep.fileName ? '' : 'hidden'} text-[11px] bg-indigo-900/50 border border-indigo-500/40 text-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                    <i class="fa-solid fa-file-lines text-xs text-indigo-400"></i> ${rep.fileName}
+                                </span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="insertSampleRephraserText()" class="text-xs bg-dark-700 hover:bg-dark-600 text-indigo-300 px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-colors flex items-center gap-1.5 shadow-sm" title="Insert 1,000-word sample excerpt">
+                                    <i class="fa-solid fa-flask-vial"></i> Load Sample Draft
+                                </button>
+                                
+                                <!-- Import from Studio Dropdown -->
+                                <div class="relative inline-block text-left">
+                                    <button onclick="toggleRephraserImportMenu(event)" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-300 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5">
+                                        <i class="fa-solid fa-download"></i> Import from Studio <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                                    </button>
+                                    <div id="rephraser-import-menu" class="hidden absolute right-0 mt-1 w-48 rounded-lg bg-dark-850 border border-dark-700 shadow-2xl py-1 z-30">
+                                        <button onclick="importFromStudioToRephraser('ch1')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 Draft
+                                        </button>
+                                        <button onclick="importFromStudioToRephraser('ch2')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-book-open text-teal-400"></i> Chapter 2 Draft
+                                        </button>
+                                        <button onclick="importFromStudioToRephraser('ch3')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-flask text-purple-400"></i> Chapter 3 Draft
+                                        </button>
+                                        <button onclick="importFromStudioToRephraser('ch4')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-chart-pie text-pink-400"></i> Chapter 4 Draft
+                                        </button>
+                                        <button onclick="importFromStudioToRephraser('ch5')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
+                                            <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 Draft
+                                        </button>
+                                        <button onclick="importFromStudioToRephraser('agent7')" class="w-full text-left px-3 py-1.5 text-xs text-purple-300 hover:bg-dark-700 hover:text-white flex items-center gap-2 border-t border-dark-750">
+                                            <i class="fa-solid fa-shield-halved text-purple-400"></i> Agent 7 Final Output
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <button onclick="clearRephraserInput()" class="text-xs bg-dark-700 hover:bg-rose-900/30 text-slate-400 hover:text-rose-300 px-2.5 py-1.5 rounded-lg border border-dark-600 transition-colors" title="Clear input">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Dropzone for DOCX, DOC, MD, PDF, TXT -->
+                        <div id="dropzone-rephraser" 
+                             class="border-2 border-dashed border-dark-600 hover:border-indigo-500 rounded-xl p-4 bg-dark-900/50 hover:bg-dark-900/90 transition-all cursor-pointer text-center relative group"
+                             ondragover="handleDragOver(event)"
+                             ondragleave="handleDragLeave(event)"
+                             ondrop="handleFileDrop(event, 'rephraser')"
+                             onclick="document.getElementById('file-input-rephraser').click()">
+                            <input type="file" 
+                                   id="file-input-rephraser" 
+                                   class="hidden" 
+                                   accept=".docx,.doc,.pdf,.txt,.md" 
+                                   onchange="handleFileInputChange(event, 'rephraser')">
+                            
+                            <div id="upload-idle-rephraser" class="flex flex-col sm:flex-row items-center justify-center gap-3 text-slate-400 group-hover:text-slate-300">
+                                <div class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center border border-dark-700 group-hover:border-indigo-500/50 text-indigo-400 transition-colors">
+                                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                                </div>
+                                <div class="text-left">
+                                    <span class="text-xs font-semibold text-slate-200 block">Click to upload or drag & drop manuscript file</span>
+                                    <span class="text-[11px] text-slate-500">Supports Word (.docx, .doc), Markdown (.md), PDF, and Plain Text (.txt)</span>
+                                </div>
+                            </div>
+
+                            <div id="upload-loading-rephraser" class="hidden flex items-center justify-center gap-3 text-indigo-400 py-1">
+                                <div class="loader border-t-indigo-400"></div>
+                                <span id="upload-status-text-rephraser" class="text-xs font-semibold">Extracting document contents...</span>
+                            </div>
+                        </div>
+
+                        <!-- Textarea -->
+                        <div class="relative">
+                            <textarea id="rephraser-textarea" 
+                                      class="w-full h-44 bg-dark-900 border border-dark-700 rounded-xl p-4 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500/60 leading-relaxed placeholder:text-slate-600 resize-y" 
+                                      placeholder="Paste your thesis chapter, section, or literature draft here to rephrase with length modulation and Turnitin humanization..."
+                                      oninput="handleRephraserTextChange(this.value)">${rep.text}</textarea>
+                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
+                                <span class="text-[11px] font-mono text-slate-400 bg-dark-800/90 px-2 py-0.5 rounded border border-dark-700 shadow-sm" id="rephraser-word-count">
+                                    ${repWords.toLocaleString()} words
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Word Length & Rephrase Mode Selection -->
+                    <div class="border border-dark-700 rounded-xl bg-dark-800/90 shadow-xl overflow-hidden p-6 space-y-5">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">2</span>
+                                <h4 class="text-sm font-bold text-white uppercase tracking-wider">Word Length & Transformation Mode</h4>
+                            </div>
+                            <span class="text-xs text-indigo-300 font-semibold bg-indigo-950/70 border border-indigo-700/50 px-3 py-1 rounded-full flex items-center gap-1.5" id="rephraser-target-badge">
+                                <i class="fa-solid fa-bullseye text-indigo-400"></i> ${targetEstimateText}
+                            </span>
+                        </div>
+
+                        <!-- 3 Preset Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                            <!-- Card 1: 50% Less -->
+                            <div onclick="setRephraserMode('less50')" 
+                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'less50' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'less50' ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-arrow-down-short-wide text-rose-400"></i> 50% Less (Condense)
+                                        </span>
+                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-950/70 border border-rose-800/50 text-rose-300">-50% Words</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
+                                        Densely synthesizes text, cutting circular academic padding while preserving every theoretical construct, empirical finding, and citation.
+                                    </p>
+                                </div>
+                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
+                                    <span>E.g., 1,000 words:</span>
+                                    <strong class="text-indigo-300">~600 - 750 words</strong>
+                                </div>
+                            </div>
+
+                            <!-- Card 2: Balanced (~100%) -->
+                            <div onclick="setRephraserMode('exact')" 
+                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'exact' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'exact' ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-scale-balanced text-teal-400"></i> Balanced (~Same Length)
+                                        </span>
+                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-teal-950/70 border border-teal-800/50 text-teal-300">~100% Words</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
+                                        Complete syntactic and lexical rejuvenation preserving original length, pacing, and chapter balance for Turnitin anti-plagiarism.
+                                    </p>
+                                </div>
+                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
+                                    <span>E.g., 1,000 words:</span>
+                                    <strong class="text-teal-300">~950 - 1,050 words</strong>
+                                </div>
+                            </div>
+
+                            <!-- Card 3: 50% More -->
+                            <div onclick="setRephraserMode('more50')" 
+                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'more50' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'more50' ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-arrow-up-wide-short text-emerald-400"></i> 50% More (Expand)
+                                        </span>
+                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/50 text-emerald-300">+50% Words</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
+                                        Systematically elaborates on theoretical mechanisms, expands academic hedging, and substantiates arguments with deeper analytical nuance.
+                                    </p>
+                                </div>
+                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
+                                    <span>E.g., 1,000 words:</span>
+                                    <strong class="text-emerald-300">~1,400 - 1,600 words</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fine-Tune Slider Container -->
+                        <div class="bg-dark-900/80 border border-dark-700 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-sliders text-indigo-400"></i>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Fine-Tune Length Ratio</span>
+                                    <span class="text-[11px] text-slate-500">Adjust anywhere from -50% to +50% word count transformation</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 w-full sm:w-80">
+                                <span class="text-[11px] font-mono text-rose-400 font-bold">-50%</span>
+                                <input type="range" 
+                                       min="-50" 
+                                       max="50" 
+                                       step="5" 
+                                       value="${customPercent}" 
+                                       id="rephraser-slider"
+                                       class="w-full accent-indigo-500 cursor-pointer"
+                                       oninput="handleRephraserSliderChange(this.value)">
+                                <span class="text-[11px] font-mono text-emerald-400 font-bold">+50%</span>
+                                <span id="rephraser-slider-val" class="text-xs font-mono font-bold bg-indigo-900/60 text-indigo-200 border border-indigo-700/40 px-2.5 py-1 rounded min-w-[56px] text-center">
+                                    ${customPercent > 0 ? '+' : ''}${customPercent}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Run Execution Bar -->
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-dark-800 to-indigo-950/30 border border-dark-700 rounded-xl p-5 shadow-xl">
+                        <div>
+                            <h4 class="text-base font-semibold text-white mb-0.5">Execute Humanized Doctoral Rephrase</h4>
+                            <p class="text-xs text-slate-400">
+                                Removes all AI cliches, modulates syntactic burstiness, guarantees <strong>Turnitin &lt; 20%</strong> and <strong>AI Content &lt; 10%</strong>.
+                            </p>
+                        </div>
+                        <button id="btn-run-rephrase" 
+                                onclick="runRephraser()" 
+                                class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-indigo-500/25 transition-all ${isRunning ? 'opacity-75 cursor-not-allowed pointer-events-none' : 'active:scale-95'}">
+                            ${isRunning 
+                                ? '<div class="loader mr-2 border-t-white border-white/30"></div> Humanizing & Rephrasing...' 
+                                : '<i class="fa-solid fa-arrows-rotate"></i> Rephrase Manuscript'}
+                        </button>
+                    </div>
+
+                    <!-- Step 4: Rephrased Output & Audit Dashboard -->
+                    <div id="rephraser-output-panel" class="border border-dark-700 rounded-xl bg-dark-900 shadow-xl overflow-hidden ${hasOutput || isRunning ? '' : 'hidden'}">
+                        
+                        <!-- Header & Audit Badges -->
+                        <div class="bg-dark-850 px-6 py-3.5 border-b border-dark-750 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-circle-check text-accent-green"></i>
+                                <span class="text-xs font-bold text-slate-200 uppercase tracking-wider">Humanized & Turnitin-Proof Output</span>
+                            </div>
+                            
+                            <!-- Live Audit Ratings -->
+                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                <span class="bg-dark-800 border border-dark-700 text-slate-300 px-2.5 py-1 rounded-md flex items-center gap-1 font-mono text-[11px]" id="rep-stat-words">
+                                    <i class="fa-solid fa-chart-column text-indigo-400"></i> ${rep.stats.originalWords ? `${rep.stats.originalWords} ➔ ${rep.stats.rephrasedWords}w (${rep.stats.changePercent > 0 ? '+' : ''}${rep.stats.changePercent}%)` : `${repWords} words`}
+                                </span>
+                                <span class="bg-dark-800 border border-emerald-500/30 text-accent-green px-2.5 py-1 rounded-md flex items-center gap-1 font-semibold text-[11px]">
+                                    <i class="fa-solid fa-shield-check"></i> Turnitin Plag &lt; 15%
+                                </span>
+                                <span class="bg-dark-800 border border-purple-500/30 text-purple-300 px-2.5 py-1 rounded-md flex items-center gap-1 font-semibold text-[11px]">
+                                    <i class="fa-solid fa-microchip"></i> AI Content &lt; 8%
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Action Toolbar (Apply, Copy, Export) -->
+                        <div class="bg-dark-800 px-4 py-2.5 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
+                            <!-- Apply to Studio Chapter -->
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs text-slate-400 font-medium mr-1">Apply to:</span>
+                                <button onclick="applyRephraserToStudio('ch1')" class="text-xs bg-dark-700 hover:bg-blue-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 1 in Studio">Ch 1</button>
+                                <button onclick="applyRephraserToStudio('ch2')" class="text-xs bg-dark-700 hover:bg-teal-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 2 in Studio">Ch 2</button>
+                                <button onclick="applyRephraserToStudio('ch3')" class="text-xs bg-dark-700 hover:bg-purple-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 3 in Studio">Ch 3</button>
+                                <button onclick="applyRephraserToStudio('ch4')" class="text-xs bg-dark-700 hover:bg-pink-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 4 in Studio">Ch 4</button>
+                                <button onclick="applyRephraserToStudio('ch5')" class="text-xs bg-dark-700 hover:bg-amber-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 5 in Studio">Ch 5</button>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="copyRephraserOutput()" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5" title="Copy output to clipboard">
+                                    <i class="fa-solid fa-copy"></i> Copy
+                                </button>
+
+                                <!-- Rich Document Export Suite -->
+                                <div class="flex items-center bg-dark-900 border border-dark-700 rounded-lg p-0.5 shadow-sm">
+                                    <!-- Word (.docx) -->
+                                    <button onclick="exportRephraserToWord('docx')" 
+                                            class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95" 
+                                            title="Export as Microsoft Word (.docx) with styled tables">
+                                        <i class="fa-solid fa-file-word"></i> Word (.docx)
+                                    </button>
+
+                                    <!-- Word (.doc) -->
+                                    <button onclick="exportRephraserToWord('doc')" 
+                                            class="text-xs text-blue-300 hover:text-white hover:bg-dark-750 px-2 py-1.5 rounded-md transition-colors font-medium text-[11px]" 
+                                            title="Export as Word (.doc)">
+                                        .doc
+                                    </button>
+
+                                    <!-- PDF (.pdf) -->
+                                    <button onclick="exportRephraserToPdf()" 
+                                            class="text-xs bg-rose-600 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ml-1" 
+                                            title="Export as PDF Document (.pdf) with styled tables">
+                                        <i class="fa-solid fa-file-pdf"></i> PDF (.pdf)
+                                    </button>
+
+                                    <!-- RTF (.rtf) -->
+                                    <button onclick="exportRephraserToRtf()" 
+                                            class="text-xs text-amber-300 hover:text-white hover:bg-dark-750 px-2 py-1.5 rounded-md transition-colors font-medium text-[11px] ml-0.5" 
+                                            title="Export as Rich Text File (.rtf)">
+                                        .rtf
+                                    </button>
+
+                                    <!-- Markdown (.md) -->
+                                    <button onclick="downloadRephraserMd()" 
+                                            class="text-xs text-slate-400 hover:text-white hover:bg-dark-750 px-2 py-1.5 rounded-md transition-colors ml-0.5 text-[11px]" 
+                                            title="Export as Markdown (.md)">
+                                        <i class="fa-solid fa-file-code"></i> .md
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Rendered Output Area -->
+                        <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[220px]" id="rephraser-output">
+                            ${isRunning 
+                                ? '<div class="flex items-center gap-3 text-indigo-400"><div class="loader border-t-indigo-400"></div> <span>Executing doctoral rephrasing, modulating word length, eliminating AI indicators, and generating Turnitin-compliant text...</span></div>' 
+                                : (rep.output ? marked.parse(rep.output) : '<div class="text-slate-500 italic">No rephrased output yet. Click "Rephrase Manuscript" above to execute.</div>')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function handleRephraserTextChange(val) {
+            state.data.rephraser.text = val;
+            const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+            const el = document.getElementById('rephraser-word-count');
+            if (el) el.textContent = `${words.toLocaleString()} words`;
+            updateRephraserTargetEstimate(words);
+        }
+
+        function updateRephraserTargetEstimate(words) {
+            const rep = state.data.rephraser;
+            const mode = rep.lengthMode || 'less50';
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
+            let text = '';
+            if (words === 0) {
+                text = 'Paste text or upload file to project target words';
+            } else if (mode === 'less50') {
+                const minW = Math.round(words * 0.55);
+                const maxW = Math.round(words * 0.75);
+                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ -35% to -50% reduction)`;
+            } else if (mode === 'exact') {
+                const minW = Math.round(words * 0.95);
+                const maxW = Math.round(words * 1.05);
+                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ same length / 100%)`;
+            } else if (mode === 'more50') {
+                const minW = Math.round(words * 1.35);
+                const maxW = Math.round(words * 1.55);
+                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ +35% to +55% expansion)`;
+            } else {
+                const targetW = Math.round(words * (1 + customPercent / 100));
+                text = `Projected Target: ~${targetW.toLocaleString()} words (${customPercent > 0 ? '+' : ''}${customPercent}%)`;
+            }
+
+            const badge = document.getElementById('rephraser-target-badge');
+            if (badge) {
+                badge.innerHTML = `<i class="fa-solid fa-bullseye text-indigo-400"></i> ${text}`;
+            }
+        }
+
+        function setRephraserMode(mode) {
+            const rep = state.data.rephraser;
+            rep.lengthMode = mode;
+            if (mode === 'less50') rep.customPercent = -50;
+            else if (mode === 'exact') rep.customPercent = 0;
+            else if (mode === 'more50') rep.customPercent = 50;
+
+            const slider = document.getElementById('rephraser-slider');
+            if (slider) slider.value = rep.customPercent;
+            const sliderVal = document.getElementById('rephraser-slider-val');
+            if (sliderVal) sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}%`;
+
+            if (state.activeTab === 'rephraser') {
+                renderWorkspace();
+            }
+        }
+
+        function handleRephraserSliderChange(val) {
+            const rep = state.data.rephraser;
+            rep.customPercent = parseInt(val, 10);
+            if (rep.customPercent === -50) rep.lengthMode = 'less50';
+            else if (rep.customPercent === 0) rep.lengthMode = 'exact';
+            else if (rep.customPercent === 50) rep.lengthMode = 'more50';
+            else rep.lengthMode = 'custom';
+
+            const sliderVal = document.getElementById('rephraser-slider-val');
+            if (sliderVal) sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}%`;
+
+            const words = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+            updateRephraserTargetEstimate(words);
+        }
+
+        function toggleRephraserImportMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('rephraser-import-menu');
+            if (menu) menu.classList.toggle('hidden');
+        }
+
+        // Close import menu when clicking outside
+        window.addEventListener('click', () => {
+            const menu = document.getElementById('rephraser-import-menu');
+            if (menu && !menu.classList.contains('hidden')) menu.classList.add('hidden');
+        });
+
+        function clearRephraserInput() {
+            state.data.rephraser.text = '';
+            state.data.rephraser.fileName = '';
+            const ta = document.getElementById('rephraser-textarea');
+            if (ta) ta.value = '';
+            const wc = document.getElementById('rephraser-word-count');
+            if (wc) wc.textContent = '0 words';
+            const badge = document.getElementById('rephraser-file-badge');
+            if (badge) badge.classList.add('hidden');
+            updateRephraserTargetEstimate(0);
+            showToast('Rephraser input cleared.', 'info');
+        }
+
+        function insertSampleRephraserText() {
+            const sample = `CHAPTER 1 EXCERPT: BACKGROUND & PROBLEM STATEMENT
+
+The digital revolution in Malaysian agriculture has precipitated substantial policy reconfigurations, most notably crystallized within the National Agro-Food Policy 2.0 (DAN 2.0). A pivotal dimension of this modernisation agenda entails the deployment of artificial intelligence (AI), specifically conversational agents and mobile chatbots designed to disseminate precision agronomic advisories to rural producers. However, empirical assessments conducted across the state of Melaka demonstrate that smallholder farmers—predominantly characterized by an aging demographic (50 years and above)—exhibit pronounced hesitation and trust deficits towards digital interfaces.
+
+Prior scholarship highlights that agricultural AI applications frequently suffer from severe adoption bottlenecks when user interfaces do not accommodate the linguistic and cognitive prerequisites of rural end-users. In Melaka's agricultural corridors, smallholder farmers operate under resource constraints and have traditionally relied upon peer networks and extension officers for agronomic decision-making. The introduction of synthetic, algorithmic recommendation systems introduces perceived vulnerability, insecurity, and cognitive discomfort. Although governmental initiatives promote digital transformation as an engine for food security and yield optimization, the actual diffusion rate of agricultural chatbots remains critically low.
+
+This disconnect establishes the central empirical problem of this investigation. Without a theoretically rigorous examination of adoption readiness, existing technology interventions risk failure. Integrating the Technology Readiness Index (TRI 2.0) with the Technology Acceptance Model (TAM) offers a compelling conceptual framework to investigate how individual personality traits (Optimism, Innovativeness, Discomfort, Insecurity) interface with functional perceptions (Perceived Usefulness and Perceived Ease of Use), ultimately moderated by user satisfaction and trust.
+
+| Construct Dimension | Operational Definition | Empirical Reference |
+| :--- | :--- | :--- |
+| **Optimism** | Positive belief in agricultural AI chatbot capabilities | Parasuraman & Colby (2015) |
+| **Insecurity** | Distrust of automated algorithmic decisions & data privacy | Parasuraman (2000) |
+| **Perceived Usefulness** | Degree to which chatbot enhances farm productivity | Davis (1989) |
+| **Adoption Readiness** | Behavioral intention to incorporate AI into daily farming | Venkatesh et al. (2012) |
+`;
+
+            state.data.rephraser.text = sample;
+            state.data.rephraser.fileName = 'Sample_Chapter1_Draft.txt';
+            const ta = document.getElementById('rephraser-textarea');
+            if (ta) ta.value = sample;
+            const words = sample.trim().split(/\s+/).length;
+            const wc = document.getElementById('rephraser-word-count');
+            if (wc) wc.textContent = `${words.toLocaleString()} words`;
+            const badge = document.getElementById('rephraser-file-badge');
+            if (badge) {
+                badge.textContent = 'Sample_Chapter1_Draft.txt';
+                badge.classList.remove('hidden');
+            }
+            updateRephraserTargetEstimate(words);
+            showToast('Loaded sample manuscript draft into Rephraser!', 'info');
+            renderWorkspace();
+        }
+
+        function importFromStudioToRephraser(sourceId) {
+            let textToImport = '';
+            let label = '';
+            if (sourceId === 'agent7') {
+                textToImport = state.data.correction.agent7Output || state.data.correction.output || '';
+                label = 'Agent 7 Final Output';
+            } else {
+                textToImport = state.data[sourceId]?.text || '';
+                label = sourceId.toUpperCase();
+            }
+
+            if (!textToImport || textToImport.trim().length === 0) {
+                alert(`No text found in ${label} to import. Please ensure text is available in that studio module.`);
+                return;
+            }
+
+            state.data.rephraser.text = textToImport;
+            state.data.rephraser.fileName = `Imported_${label}.txt`;
+            const words = textToImport.trim().split(/\s+/).length;
+            showToast(`Imported <strong>${words.toLocaleString()} words</strong> from ${label}!`, 'success');
+            renderWorkspace();
+        }
+
+        function copyRephraserOutput() {
+            const out = state.data.rephraser.output;
+            if (!out) {
+                alert("No rephrased output to copy.");
+                return;
+            }
+            navigator.clipboard.writeText(out).then(() => {
+                showToast("Copied rephrased text to clipboard!", "info");
+            }).catch(e => {
+                alert("Could not copy text: " + e.message);
+            });
+        }
+
+        function applyRephraserToStudio(chapId) {
+            const out = state.data.rephraser.output;
+            if (!out || out.trim().length === 0) {
+                alert("No rephrased content available to apply.");
+                return;
+            }
+            state.data[chapId].text = out;
+            state.data[chapId].status = 'Approved';
+            showToast(`<strong>${chapId.toUpperCase()}</strong> updated in Studio with humanized rephrased text!`, 'success');
+            renderSidebar();
         }
 
         function insertSampleCorrection() {
@@ -2841,6 +3439,377 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
                 console.error('PDF export error:', err);
                 showToast(`PDF Export failed: ${err.message}`, 'error');
             }
+        }
+
+        // ==========================================
+        // REPHRASER EXECUTION & RICH EXPORT PIPELINE
+        // ==========================================
+
+        async function runRephraser() {
+            const rep = state.data.rephraser;
+            if (rep.isRunning) return;
+
+            const text = rep.text.trim();
+            if (text.length < 30) {
+                alert("Please provide at least 30 characters of manuscript text to rephrase.");
+                return;
+            }
+
+            const origWords = text.split(/\s+/).length;
+            const mode = rep.lengthMode || 'less50';
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
+
+            let lengthDirective = '';
+            let targetDesc = '';
+            if (mode === 'less50') {
+                const targetMin = Math.round(origWords * 0.55);
+                const targetMax = Math.round(origWords * 0.75);
+                lengthDirective = `CONDENSE BY 50% LESS. Reduce word count from ${origWords} words down to approximately ${targetMin} to ${targetMax} words (deducting redundant padding while preserving all essential academic arguments, theoretical constructs, data, and citations).`;
+                targetDesc = `${targetMin}-${targetMax}`;
+            } else if (mode === 'exact') {
+                const targetMin = Math.round(origWords * 0.95);
+                const targetMax = Math.round(origWords * 1.05);
+                lengthDirective = `MAINTAIN BALANCED LENGTH (~100%). Keep word count approximately ${targetMin} to ${targetMax} words (approximately same length as original), executing thorough syntactic restructuring and vocabulary replacement.`;
+                targetDesc = `${targetMin}-${targetMax}`;
+            } else if (mode === 'more50') {
+                const targetMin = Math.round(origWords * 1.35);
+                const targetMax = Math.round(origWords * 1.55);
+                lengthDirective = `EXPAND BY 50% MORE. Expand word count from ${origWords} words up to approximately ${targetMin} to ${targetMax} words (elaborating on theoretical mechanisms, expanding analytical depth, and providing extended academic substantiation).`;
+                targetDesc = `${targetMin}-${targetMax}`;
+            } else {
+                const targetExact = Math.round(origWords * (1 + customPercent / 100));
+                lengthDirective = `TRANSFORM LENGTH BY ${customPercent > 0 ? '+' : ''}${customPercent}%. Target approximately ${targetExact} words.`;
+                targetDesc = `~${targetExact}`;
+            }
+
+            rep.isRunning = true;
+            renderSidebar();
+            if (state.activeTab === 'rephraser') renderWorkspace();
+
+            showToast("🚀 Humanizing manuscript and adjusting word count...", "info");
+
+            const systemPrompt = `You are the PhD Thesis Rephraser & Master Academic Humanizer.
+Your mission is to perform a comprehensive doctoral-level rephrasing of the provided academic manuscript, strictly adhering to the requested word length transformation while guaranteeing superior academic cadence, narrative flow, and complete compliance with Turnitin and AI-detection thresholds.
+
+TARGET AUDIT BENCHMARKS:
+1. Turnitin Plagiarism Similarity Index: MUST BE LESS THAN 20% (< 20%). Target < 15%.
+2. Turnitin / GPTZero / Originality AI Score: MUST BE LESS THAN 10% (< 10%). Target < 8%.
+3. Academic Standard: Postgraduate doctoral rigor, APA 7th Edition style, nuanced analytical depth.
+
+MANDATORY LENGTH TRANSFORMATION REQUIREMENT:
+The user has requested the following word count directive:
+TARGET DIRECTIVE: ${lengthDirective}
+
+CRITICAL HUMANIZATION & AI BYPASS RULES:
+- High Syntactic Burstiness: Intentionally vary sentence lengths from short, punchy 8-12 word claims to sophisticated 25-40 word multi-clause analytical explanations containing subordinate clauses, participial phrases, and appositives.
+- Vocabulary & Perplexity: NEVER use generic, stereotypical generative AI words or transitional formulas.
+  BANNED WORDS: "delve", "pivotal", "tapestry", "testament", "in conclusion", "moreover", "furthermore", "it is noteworthy that", "it is crucial to remember", "a testament to", "beacon", "fosters", "crucial role", "navigating", "ever-evolving".
+  USE: Authentic doctoral hedging and disciplinary vocabulary ("The empirical evidence suggests", "Contradicting previous assumptions", "This discrepancy arises from", "Consequently", "Empirically observed", "Structural path coefficients").
+- REMOVE ALL AI MARKDOWN / AI INDICATORS:
+  - Do NOT write ANY conversational preamble, introduction, or conversational commentary (e.g. "Here is the rephrased text", "Certainly! Below is...", "I have condensed the text").
+  - Do NOT write conversational postscripts (e.g. "Let me know if you need more changes").
+  - Begin DIRECTLY with the academic title or chapter heading.
+- STRUCTURED TABLES: If the source contains tables, comparison metrics, or statistical parameters, render them using clean Markdown tables (| Col 1 | Col 2 |) so that they convert to native Word and PDF tables. Never use ASCII art or plain text for tables.
+`;
+
+            const userPrompt = `ORIGINAL MANUSCRIPT EXCERPT (${origWords} words):
+---
+${text.substring(0, 35000)}
+---
+
+LENGTH REQUIREMENT: ${lengthDirective} (Target: approximately ${targetDesc} words).
+
+Please provide the completely rephrased, humanized academic text ready for doctoral submission. Comply strictly with Turnitin plagiarism < 20% and AI content < 10%. Output only the academic manuscript.`;
+
+            try {
+                const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
+                
+                // Client-side sanitizer: strip any accidental AI preamble or postamble
+                let cleanOutput = responseText.trim();
+                cleanOutput = cleanOutput.replace(/^(?:Here is (?:the|your) (?:rephrased|humanized|condensed|expanded) text:?|Below is (?:the|your) (?:rephrased|humanized) text:?)\s*\n+/i, '');
+                cleanOutput = cleanOutput.replace(/\n+\s*(?:Hope this helps!?|Let me know if you (?:need|require) (?:any )?(?:further )?(?:changes|adjustments)\.?|This (?:version|text) (?:complies|meets) (?:with )?Turnitin.*)$/i, '');
+
+                rep.output = cleanOutput;
+                rep.status = 'Approved';
+                rep.isRunning = false;
+
+                const rephrasedWords = cleanOutput.trim().split(/\s+/).length;
+                const changePct = Math.round(((rephrasedWords - origWords) / origWords) * 100);
+                rep.stats = {
+                    originalWords: origWords,
+                    rephrasedWords: rephrasedWords,
+                    changePercent: changePct
+                };
+
+                showToast(`🎉 Rephrase complete: <strong>${origWords} ➔ ${rephrasedWords} words</strong> (${changePct > 0 ? '+' : ''}${changePct}%)! Turnitin & AI-safe.`, "success");
+            } catch(e) {
+                rep.output = `**Rephrase failed:**\n\n${e.message}\n\n*Please verify your Gemini API key pool.*`;
+                rep.isRunning = false;
+                showToast(`Rephrase failed: ${e.message}`, "error");
+            }
+
+            renderSidebar();
+            if (state.activeTab === 'rephraser') renderWorkspace();
+        }
+
+        async function exportRephraserToWord(format = 'docx') {
+            const rep = state.data.rephraser;
+            const text = rep.output || rep.text;
+            if (!text || text.trim().length === 0) {
+                alert("No content available to export.");
+                return;
+            }
+
+            showToast(`Generating Word document (${format.toUpperCase()}) with native tables and graphics...`, 'info');
+
+            try {
+                const processedHtml = await processContentForExport(text, false);
+                const titleText = `PhD Thesis: Rephrased & Humanized Manuscript`;
+                const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)`;
+                const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+                const wordDocumentHtml = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+      xmlns:w='urn:schemas-microsoft-com:office:word' 
+      xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+    <meta charset='utf-8'>
+    <title>${titleText}</title>
+    <!--[if gte mso 9]>
+    <xml>
+        <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+        @page {
+            size: 8.5in 11.0in;
+            margin: 1.0in 1.0in 1.0in 1.0in;
+            mso-header-margin: 0.5in;
+            mso-footer-margin: 0.5in;
+        }
+        body {
+            font-family: 'Times New Roman', 'Calibri', serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #111827;
+            text-align: justify;
+        }
+        .thesis-header-box {
+            text-align: center;
+            border-bottom: 2pt solid #4338ca;
+            padding-bottom: 18pt;
+            margin-bottom: 24pt;
+        }
+        .thesis-main-title {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #3730a3;
+            margin-bottom: 6pt;
+        }
+        .thesis-sub-title {
+            font-size: 13pt;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 6pt;
+        }
+        .thesis-meta-info {
+            font-size: 10pt;
+            color: #64748b;
+        }
+        h1, h2, h3, h4 {
+            font-family: 'Times New Roman', serif;
+            page-break-after: avoid;
+        }
+        h1 { font-size: 18pt; font-weight: bold; color: #3730a3; margin-top: 20pt; margin-bottom: 8pt; }
+        h2 { font-size: 15pt; font-weight: bold; color: #3730a3; margin-top: 16pt; margin-bottom: 6pt; border-bottom: 1pt solid #cbd5e1; padding-bottom: 4pt; }
+        h3 { font-size: 13pt; font-weight: bold; color: #0f172a; margin-top: 14pt; margin-bottom: 6pt; }
+        p { margin-bottom: 10pt; line-height: 1.6; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16pt 0;
+            font-size: 10.5pt;
+        }
+        th {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            font-weight: bold;
+            border: 1.5pt solid #475569;
+            padding: 7pt 10pt;
+            text-align: left;
+        }
+        td {
+            border: 1pt solid #cbd5e1;
+            padding: 6pt 10pt;
+            vertical-align: top;
+            color: #1e293b;
+        }
+        tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            margin: 14pt auto;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="thesis-header-box">
+        <div class="thesis-main-title">${titleText}</div>
+        <div class="thesis-sub-title">${subtitleText}</div>
+        <div class="thesis-meta-info">
+            <strong>System:</strong> PhD Studio Rephraser &bull; 
+            <strong>Date:</strong> ${exportDate} &bull; 
+            <strong>Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
+        </div>
+    </div>
+    <div class="thesis-content">
+        ${processedHtml}
+    </div>
+</body>
+</html>`;
+
+                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.${format}`;
+                const mimeType = format === 'docx' ? 'application/vnd.ms-word;charset=utf-8' : 'application/msword;charset=utf-8';
+                const blob = new Blob(['\ufeff', wordDocumentHtml], { type: mimeType });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+                showToast(`✅ Exported Word document: <strong>${filename}</strong> with styled tables!`, 'success');
+            } catch(e) {
+                console.error("Rephraser Word export error:", e);
+                showToast(`Export failed: ${e.message}`, 'error');
+            }
+        }
+
+        async function exportRephraserToPdf() {
+            const rep = state.data.rephraser;
+            const text = rep.output || rep.text;
+            if (!text || text.trim().length === 0) {
+                alert("No content available to export.");
+                return;
+            }
+
+            if (!window.html2pdf) {
+                alert("PDF generation library is still loading. Please try again.");
+                return;
+            }
+
+            showToast("Preparing high-resolution PDF with styled tables...", "info");
+
+            try {
+                const processedHtml = await processContentForExport(text, false);
+                const titleText = `PhD Thesis: Rephrased & Humanized Manuscript`;
+                const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)`;
+                const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+                const container = document.createElement('div');
+                container.style.position = 'fixed';
+                container.style.top = '-99999px';
+                container.style.left = '0';
+                container.style.width = '800px';
+                container.style.backgroundColor = '#ffffff';
+                container.style.color = '#0f172a';
+                container.style.fontFamily = "'Inter', Arial, sans-serif";
+                container.style.padding = '24px 32px';
+                container.style.boxSizing = 'border-box';
+
+                container.innerHTML = `
+                    <div style="border-bottom: 2px solid #4338ca; padding-bottom: 14px; margin-bottom: 24px; text-align: center;">
+                        <h1 style="font-size: 20px; font-weight: 700; color: #3730a3; margin: 0 0 6px 0;">${titleText}</h1>
+                        <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0;">${subtitleText}</p>
+                        <p style="font-size: 10px; color: #64748b; margin: 0;">
+                            <strong>ResearchStudio Humanizer Engine</strong> &bull; 
+                            <strong>Date:</strong> ${exportDate} &bull; 
+                            <strong>Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
+                        </p>
+                    </div>
+                    <div class="pdf-body" style="font-size: 12px; line-height: 1.65; color: #1e293b;">
+                        ${processedHtml}
+                    </div>
+                `;
+
+                document.body.appendChild(container);
+
+                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.pdf`;
+
+                const opt = {
+                    margin: [10, 10, 12, 10],
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                };
+
+                await html2pdf().set(opt).from(container).save();
+                document.body.removeChild(container);
+
+                showToast(`✅ Exported PDF: <strong>${filename}</strong> with formatted tables!`, 'success');
+            } catch(e) {
+                console.error("Rephraser PDF export error:", e);
+                showToast(`PDF Export failed: ${e.message}`, 'error');
+            }
+        }
+
+        async function exportRephraserToRtf() {
+            const rep = state.data.rephraser;
+            const text = rep.output || rep.text;
+            if (!text || text.trim().length === 0) {
+                alert("No content available to export.");
+                return;
+            }
+
+            try {
+                const processedHtml = await processContentForExport(text, false);
+                const rtfContent = `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}
+\\viewkind4\\uc1\\pard\\f0\\fs24
+${processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}
+}`;
+                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.rtf`;
+                const blob = new Blob([rtfContent], { type: 'application/rtf;charset=utf-8' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+                showToast(`✅ Exported Rich Text: <strong>${filename}</strong>`, 'success');
+            } catch(e) {
+                console.error("RTF export error:", e);
+                showToast(`RTF export failed: ${e.message}`, 'error');
+            }
+        }
+
+        function downloadRephraserMd() {
+            const rep = state.data.rephraser;
+            const text = rep.output || rep.text;
+            if (!text || text.trim().length === 0) {
+                alert("No content available to export.");
+                return;
+            }
+            const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.md`;
+            const blob = new Blob([text], { type: 'text/markdown;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            showToast(`Exported Markdown: <strong>${filename}</strong>`, 'info');
         }
 
         async function runAgent(agentId) {
