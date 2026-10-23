@@ -1,0 +1,24 @@
+services:
+  researchstudio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: researchstudio
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.researchstudio-http.entrypoints=http"
+      - "traefik.http.routers.researchstudio-http.rule=Host(`researchstudio.65-75-201-219.sslip.io`)"
+      - "traefik.http.routers.researchstudio-https.entrypoints=https"
+      - "traefik.http.routers.researchstudio-https.rule=Host(`researchstudio.65-75-201-219.sslip.io`)"
+      - "traefik.http.routers.researchstudio-https.tls=true"
+      - "traefik.http.routers.researchstudio-https.tls.certresolver=letsencrypt"
+      - "traefik.http.services.researchstudio.loadbalancer.server.port=80"
+
+networks:
+  coolify:
+    external: true

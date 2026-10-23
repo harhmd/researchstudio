@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhD Thesis Research Studio</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        dark: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', 600: '#475569' },
+                        accent: { blue: '#3b82f6', green: '#10b981', teal: '#14b8a6', purple: '#8b5cf6', pink: '#ec4899', amber: '#f59e0b' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { color: #f8fafc; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; }
+        .markdown-body h1 { font-size: 1.5em; }
+        .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid #334155; padding-bottom: 0.3em; }
+        .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .markdown-body strong { color: #e2e8f0; }
+        .markdown-body blockquote { border-left: 4px solid #8b5cf6; padding-left: 1rem; color: #94a3b8; font-style: italic; margin: 1rem 0; }
+        .markdown-body table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        .markdown-body th, .markdown-body td { border: 1px solid #334155; padding: 0.5rem 0.75rem; text-align: left; }
+        .markdown-body th { background-color: #1e293b; color: #f1f5f9; }
+
+        .loader {
+            border: 3px solid #334155;
+            border-top: 3px solid #8b5cf6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-dark-900 text-slate-200 font-sans h-screen flex overflow-hidden selection:bg-accent-purple selection:text-white">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-72 bg-dark-800 border-r border-dark-700 flex flex-col flex-shrink-0 z-20 shadow-xl">
+        <div class="p-6 border-b border-dark-700 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-purple to-accent-blue flex items-center justify-center shadow-lg shadow-purple-500/20">
+                <i class="fa-solid fa-microchip text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-sm font-bold text-white tracking-wide">PhD Studio AI</h1>
+                <p class="text-[10px] text-slate-400 uppercase tracking-wider">Multi-Agent System</p>
+            </div>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1" id="sidebar-nav"></nav>
+        <div class="p-4 border-t border-dark-700 bg-dark-900/50 flex flex-col gap-2">
+            <button onclick="openApiKeyModal()" class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600 text-xs text-slate-300 transition-colors">
+                <span class="flex items-center gap-2">
+                    <i class="fa-solid fa-key text-accent-amber"></i>
+                    <span>Gemini API Key</span>
+                </span>
+                <span id="key-status-badge" class="px-1.5 py-0.5 rounded text-[10px] bg-dark-700 text-slate-400">Not Set</span>
+            </button>
+            <div class="flex items-center justify-between text-xs text-slate-400 px-1 pt-1">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-accent-green"></i>
+                    <span>APA 7 & Privacy</span>
+                </div>
+                <span class="text-[10px] text-slate-500">v1.0.0</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex flex-col h-full relative overflow-hidden">
+        
+        <!-- Personalized Header -->
+        <header class="bg-dark-800/80 backdrop-blur-md border-b border-dark-700 flex items-center justify-between px-8 py-4 sticky top-0 z-10">
+            <div>
+                <h2 class="text-xl font-bold text-white tracking-wide flex items-center gap-2">
+                    Welcome, Ts. Hj Nor Azhar Bin Abdul Hamid (MBA) (B.C.M) to your PhD Research Studio
+                </h2>
+                <p class="text-sm text-accent-teal mt-1 font-medium">
+                    Thesis: "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction"
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="openApiKeyModal()" class="flex items-center gap-2 bg-dark-700 hover:bg-dark-600 text-slate-200 text-xs font-medium px-3 py-2 rounded-lg border border-dark-600 transition-all">
+                    <i class="fa-solid fa-gear text-accent-blue"></i>
+                    <span class="hidden md:inline">Settings</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div id="workspace-container" class="flex-1 overflow-y-auto p-8 relative">
+            <!-- Dynamic content will be injected here by JavaScript -->
+        </div>
+    </main>
+
+    <!-- API Key Settings Modal -->
+    <div id="api-key-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-dark-800 border border-dark-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div class="p-6 border-b border-dark-700 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-accent-blue/10 flex items-center justify-center text-accent-blue">
+                        <i class="fa-solid fa-key"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Gemini API Settings</h3>
+                        <p class="text-xs text-slate-400">Configure your Gemini API key and preferred model</p>
+                    </div>
+                </div>
+                <button onclick="closeApiKeyModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-700 transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">Google Gemini API Key</label>
+                    <div class="relative">
+                        <input id="input-api-key" type="password" placeholder="AIzaSy..." class="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue focus:ring-1 focus:ring-accent-blue pr-10">
+                        <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200">
+                            <i id="toggle-pwd-icon" class="fa-solid fa-eye text-xs"></i>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                        <i class="fa-solid fa-circle-info text-accent-blue"></i>
+                        Your key is saved locally in your browser and never sent to any third-party server.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">Gemini Model</label>
+                    <select id="select-model" class="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-accent-blue">
+                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended - Ultra Fast & Rigorous)</option>
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-6 border-t border-dark-700 bg-dark-900/40 flex justify-end gap-3">
+                <button onclick="closeApiKeyModal()" class="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-dark-700 transition-colors">Cancel</button>
+                <button onclick="saveApiKeySettings()" class="bg-gradient-to-r from-accent-blue to-blue-600 hover:from-blue-500 hover:to-blue-600 text-white font-medium px-5 py-2 rounded-lg text-sm shadow-lg shadow-blue-500/20 transition-all">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global App State
+        let customApiKey = localStorage.getItem('gemini_api_key') || "";
+        let selectedModel = localStorage.getItem('gemini_model') || "gemini-2.5-flash";
+
+        const systemAgents = [
+            {
+                id: 'ch1', title: 'Chapter 1: Foundation', icon: 'fa-file-lines', color: 'text-blue-400',
+                desc: 'Audits Introduction, Background, Problem Statement, and Research Objectives.',
+                systemPrompt: `You are an expert academic editor auditing Chapter 1 of a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture". Focus strictly on the foundation: Are the research problem (low digital literacy, trust deficits, aging demographic), research questions, and the context of the National Agro-Food Policy 2.0 (DAN 2.0) clearly established? Provide a rigorous, structured critique. Point out logical gaps. Be extremely professional and formatting in markdown.`
+            },
+            {
+                id: 'ch2', title: 'Chapter 2: Theorist', icon: 'fa-book-open', color: 'text-teal-400',
+                desc: 'Focuses on TRAM, TAM, TRI theories, Literature Matrix, and mediation gaps.',
+                systemPrompt: `You are a theoretical methodology expert reviewing Chapter 2 of a PhD thesis on agricultural AI chatbots. Evaluate the synthesis of the Technology Readiness and Acceptance Model (TRAM), TAM, and TRI. Assess how well the author justifies 'Trust' and 'Satisfaction' as sequential mediators, and 'Age' as a boundary condition/moderator. Highlight strengths and suggest literature gap improvements.`
+            },
+            {
+                id: 'ch3', title: 'Chapter 3: Methodologist', icon: 'fa-flask', color: 'text-purple-400',
+                desc: 'Audits Research Design, PLS-SEM framework, and G*Power sampling justification.',
+                systemPrompt: `You are a strict statistical methodologist auditing Chapter 3. The thesis uses a quantitative cross-sectional survey of Melaka smallholder farmers, utilizing PLS-SEM and G*Power sampling (n=256). Critique the research design, construct operationalization, and sampling strategy. Ensure methodological rigor is maintained.`
+            },
+            {
+                id: 'ch4', title: 'Chapter 4: Analyst', icon: 'fa-chart-pie', color: 'text-pink-400',
+                desc: 'Checks data analysis, HTMT, Fornell-Larcker, and PLS-SEM bootstrapping results.',
+                systemPrompt: `You are a data analysis expert reviewing Chapter 4. Evaluate the reporting of PLS-SEM results, including measurement model evaluations (Cronbach's Alpha, Composite Reliability, AVE, Discriminant Validity via HTMT and Fornell-Larcker) and structural model path coefficients. Ensure statistical language is accurate and objective.`
+            },
+            {
+                id: 'ch5', title: 'Chapter 5: Synthesizer', icon: 'fa-bullseye', color: 'text-amber-400',
+                desc: 'Evaluates Discussion, implications, actionable strategies, and limitations.',
+                systemPrompt: `You are a senior academic examiner reviewing Chapter 5. Evaluate the discussion of findings, theoretical and practical implications (e.g., multilingual design, human-backup), and methodological limitations. Ensure the conclusion explicitly answers the Chapter 1 research questions.`
+            },
+            {
+                id: 'coherence', title: 'Coherence Master', icon: 'fa-network-wired', color: 'text-emerald-400',
+                desc: 'Scans text for the "Golden Thread" consistency across research questions and methods.',
+                systemPrompt: `You are the Coherence Master Agent. Read the provided text and evaluate the "Golden Thread" of the thesis. Ensure consistency in terminology, variables, and logic. Check if the claims made align with the core focus on Malaysian smallholder farmers, TRAM, PLS-SEM, and AI Chatbots.`
+            }
+        ];
+
+        let state = {
+            activeTab: 'ch1',
+            data: {
+                ch1: { text: '', output: '', status: 'Pending' },
+                ch2: { text: '', output: '', status: 'Pending' },
+                ch3: { text: '', output: '', status: 'Pending' },
+                ch4: { text: '', output: '', status: 'Pending' },
+                ch5: { text: '', output: '', status: 'Pending' },
+                coherence: { text: '', output: '', status: 'Pending' },
+                tribunal: { output: '', status: 'Pending' }
+            },
+            isProcessing: false
+        };
+
+        // Initialization
+        function initApp() {
+            updateKeyStatusBadge();
+            renderSidebar();
+            renderWorkspace();
+        }
+
+        // --- Settings Modal Functions ---
+        function openApiKeyModal() {
+            document.getElementById('input-api-key').value = customApiKey;
+            document.getElementById('select-model').value = selectedModel;
+            document.getElementById('api-key-modal').classList.remove('hidden');
+        }
+
+        function closeApiKeyModal() {
+            document.getElementById('api-key-modal').classList.add('hidden');
+        }
+
+        function togglePasswordVisibility() {
+            const input = document.getElementById('input-api-key');
+            const icon = document.getElementById('toggle-pwd-icon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fa-solid fa-eye-slash text-xs';
+            } else {
+                input.type = 'password';
+                icon.className = 'fa-solid fa-eye text-xs';
+            }
+        }
+
+        function saveApiKeySettings() {
+            const keyVal = document.getElementById('input-api-key').value.trim();
+            const modelVal = document.getElementById('select-model').value;
+            customApiKey = keyVal;
+            selectedModel = modelVal;
+            localStorage.setItem('gemini_api_key', keyVal);
+            localStorage.setItem('gemini_model', modelVal);
+            updateKeyStatusBadge();
+            closeApiKeyModal();
+        }
+
+        function updateKeyStatusBadge() {
+            const badge = document.getElementById('key-status-badge');
+            if (!badge) return;
+            if (customApiKey) {
+                badge.className = 'px-1.5 py-0.5 rounded text-[10px] bg-accent-green/20 text-accent-green font-medium';
+                badge.textContent = 'Configured';
+            } else {
+                badge.className = 'px-1.5 py-0.5 rounded text-[10px] bg-dark-700 text-slate-400';
+                badge.textContent = 'Not Set';
+            }
+        }
+
+        // --- Render Functions ---
+
+        function renderSidebar() {
+            const nav = document.getElementById('sidebar-nav');
+            nav.innerHTML = '';
+            
+            // Standard Agents
+            systemAgents.forEach(agent => {
+                const isActive = state.activeTab === agent.id;
+                const status = state.data[agent.id].status;
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-4 py-3 rounded-xl mb-1 flex items-center gap-3 transition-all ${isActive ? 'bg-dark-700 text-white shadow-md' : 'text-slate-400 hover:bg-dark-700/50 hover:text-slate-200'}`;
+                btn.onclick = () => { if(!state.isProcessing) { state.activeTab = agent.id; renderSidebar(); renderWorkspace(); } };
+                btn.innerHTML = `
+                    <i class="fa-solid ${agent.icon} ${isActive ? agent.color : ''} w-5 text-center"></i>
+                    <span class="text-sm font-medium truncate">${agent.title}</span>
+                    ${status === 'Approved' ? '<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>' : ''}
+                `;
+                nav.appendChild(btn);
+            });
+
+            // Master Tribunal Tab
+            const isTribunalActive = state.activeTab === 'tribunal';
+            const tribBtn = document.createElement('button');
+            tribBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-4 flex items-center gap-3 transition-all border border-accent-purple/30 ${isTribunalActive ? 'bg-accent-purple/20 text-white border-accent-purple/50' : 'text-accent-purple hover:bg-accent-purple/10'}`;
+            tribBtn.onclick = () => { if(!state.isProcessing) { state.activeTab = 'tribunal'; renderSidebar(); renderWorkspace(); } };
+            tribBtn.innerHTML = `
+                <i class="fa-solid fa-gavel w-5 text-center"></i>
+                <span class="text-sm font-bold">Master Tribunal</span>
+            `;
+            nav.appendChild(tribBtn);
+        }
+
+        function renderWorkspace() {
+            const container = document.getElementById('workspace-container');
+            container.innerHTML = '';
+
+            if (state.activeTab === 'tribunal') {
+                renderTribunalWorkspace(container);
+            } else {
+                renderAgentWorkspace(container);
+            }
+        }
+
+        function renderAgentWorkspace(container) {
+            const agent = systemAgents.find(a => a.id === state.activeTab);
+            const data = state.data[agent.id];
+            const wordCount = data.text ? data.text.trim().split(/\s+/).length : 0;
+
+            const html = `
+                <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
+                    <div class="flex justify-between items-end mb-2">
+                        <div>
+                            <h3 class="text-2xl font-bold text-white mb-1"><i class="fa-solid ${agent.icon} ${agent.color} mr-3"></i>${agent.title}</h3>
+                            <p class="text-sm text-slate-400">${agent.desc}</p>
+                        </div>
+                        <div class="px-3 py-1 rounded-md text-xs font-semibold border ${data.status === 'Approved' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-dark-700 text-slate-300 border-dark-600'}">
+                            Status: ${data.status}
+                        </div>
+                    </div>
+
+                    <!-- File Upload Area -->
+                    <div class="bg-dark-800 border border-dashed border-dark-600 rounded-xl p-6 flex flex-col items-center justify-center hover:border-accent-blue transition-colors relative">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-500 mb-3"></i>
+                        <p class="text-sm font-medium text-slate-300 mb-1">Upload Chapter Document</p>
+                        <p class="text-xs text-slate-500 mb-4">Accepts .txt, .md, .csv</p>
+                        <label class="cursor-pointer bg-dark-700 hover:bg-dark-600 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-dark-600">
+                            Select File
+                            <input type="file" class="hidden" accept=".txt,.md,.csv" onchange="handleFileUpload(event, '${agent.id}')">
+                        </label>
+                    </div>
+
+                    <!-- Text Area -->
+                    <div class="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden shadow-lg focus-within:border-accent-blue focus-within:ring-1 focus-within:ring-accent-blue">
+                        <div class="bg-dark-700/50 px-4 py-2 border-b border-dark-700 flex justify-between items-center">
+                            <span class="text-xs font-medium text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-keyboard mr-1"></i> Chapter Text</span>
+                            <span class="text-xs text-slate-500" id="word-count">${wordCount} words</span>
+                        </div>
+                        <textarea id="chap-textarea" class="w-full h-64 bg-transparent p-5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-y" placeholder="Paste or upload text here..." oninput="handleTextChange('${agent.id}', this.value)"></textarea>
+                    </div>
+
+                    <div class="flex justify-between items-center">
+                        <button onclick="clearText('${agent.id}')" class="text-xs text-slate-400 hover:text-rose-400 transition-colors">
+                            <i class="fa-solid fa-trash-can mr-1"></i> Clear Input
+                        </button>
+                        <button id="btn-run" onclick="runAgent('${agent.id}')" class="flex items-center gap-2 bg-gradient-to-r from-accent-blue to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow-lg shadow-blue-500/25 transition-all active:scale-95">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Run Agent Review
+                        </button>
+                    </div>
+
+                    <!-- Output Console -->
+                    <div id="console-wrapper" class="mt-8 border border-dark-700 rounded-xl bg-dark-800 shadow-xl overflow-hidden ${data.output ? '' : 'hidden'}">
+                        <div class="bg-dark-900 px-4 py-3 border-b border-dark-700 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-terminal text-accent-teal"></i>
+                                <span class="text-sm font-semibold text-slate-200">AI Agent Console Output</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="downloadOutput('${agent.id}')" class="text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 px-3 py-1.5 rounded-md border border-dark-600 transition-colors">
+                                    <i class="fa-solid fa-download mr-1"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[150px]" id="console-output">
+                            ${data.output ? marked.parse(data.output) : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+            document.getElementById('chap-textarea').value = data.text;
+        }
+
+        function renderTribunalWorkspace(container) {
+            // Check readiness
+            let readyCount = 0;
+            systemAgents.forEach(a => { if(state.data[a.id].status === 'Approved') readyCount++; });
+            const allReady = readyCount === systemAgents.length;
+
+            let cardsHtml = '';
+            systemAgents.forEach(agent => {
+                const isAppr = state.data[agent.id].status === 'Approved';
+                cardsHtml += `
+                    <div class="bg-dark-800 border ${isAppr ? 'border-accent-green/30' : 'border-dark-700'} rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-lg">
+                        <i class="fa-solid ${agent.icon} ${isAppr ? 'text-accent-green' : 'text-slate-500'} text-2xl mb-2"></i>
+                        <span class="text-xs font-semibold text-slate-300 mb-1">${agent.id.toUpperCase()}</span>
+                        <span class="text-[10px] uppercase px-2 py-0.5 rounded-full ${isAppr ? 'bg-accent-green/10 text-accent-green' : 'bg-dark-700 text-slate-400'}">${state.data[agent.id].status}</span>
+                    </div>
+                `;
+            });
+
+            const html = `
+                <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
+                    <div>
+                        <h3 class="text-2xl font-bold text-white mb-1"><i class="fa-solid fa-scale-balanced text-accent-purple mr-3"></i>The Master Tribunal</h3>
+                        <p class="text-sm text-slate-400">Aggregates all chapter inputs for APA 7 compliance checking, flow optimization, and humanization.</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+                        ${cardsHtml}
+                    </div>
+
+                    <div class="bg-dark-800 border border-accent-purple/30 rounded-xl shadow-lg shadow-purple-500/10 p-6 flex flex-col sm:flex-row gap-6 items-center justify-between">
+                        <div>
+                            <h4 class="text-lg font-semibold text-white mb-1">Full Consensus Review</h4>
+                            <p class="text-sm text-slate-400">Simulates a peer-review debate across all agents and outputs a unified, defense-ready critique.</p>
+                        </div>
+                        <button id="btn-tribunal" onclick="runFullTribunal()" class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-purple-500/25 transition-all ${!allReady ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}">
+                            <i class="fa-solid fa-gavel"></i> Run Full Consensus Review
+                        </button>
+                    </div>
+
+                    <!-- Output -->
+                    <div id="tribunal-wrapper" class="border border-dark-700 rounded-xl bg-dark-900 shadow-xl overflow-hidden ${state.data.tribunal.output ? '' : 'hidden'}">
+                        <div class="bg-dark-800 px-4 py-3 border-b border-dark-700 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-file-signature text-accent-purple"></i>
+                                <span class="text-sm font-semibold text-slate-200">Tribunal Final Report</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="downloadOutput('tribunal')" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-md border border-dark-600 transition-colors">
+                                    <i class="fa-solid fa-download mr-1"></i> Export Report
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[200px]" id="tribunal-output">
+                            ${state.data.tribunal.output ? marked.parse(state.data.tribunal.output) : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        // --- Logic Functions ---
+
+        function handleFileUpload(event, agentId) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                state.data[agentId].text = content;
+                if (state.activeTab === agentId) {
+                    renderWorkspace();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function handleTextChange(agentId, val) {
+            state.data[agentId].text = val;
+            const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+            const el = document.getElementById('word-count');
+            if (el) el.textContent = `${words} words`;
+        }
+
+        function clearText(agentId) {
+            state.data[agentId].text = '';
+            renderWorkspace();
+        }
+
+        function downloadOutput(id) {
+            const content = id === 'tribunal' ? state.data.tribunal.output : state.data[id].output;
+            if (!content) return;
+            const filename = `ResearchStudio_${id.toUpperCase()}_Report_${new Date().toISOString().slice(0, 10)}.md`;
+            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+        }
+
+        // API Caller Utility
+        async function fetchGeminiResponse(systemInstruction, userPrompt) {
+            const key = customApiKey.trim();
+            const model = selectedModel || "gemini-2.5-flash";
+            
+            // Build URL: if key exists, pass key parameter; if empty, use canvas interceptor URL pattern
+            const apiUrl = key 
+                ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`
+                : `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                systemInstruction: { parts: [{ text: systemInstruction }] }
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    const errMsg = errData.error?.message || `HTTP error! status: ${response.status}`;
+                    
+                    if (response.status === 400 || response.status === 403) {
+                        return `**Gemini API Configuration Notice:**\n\n${errMsg}\n\n> **Tip:** If running outside of Google Canvas, please click the **Settings / Gemini API Key** button in the sidebar and enter your Google Gemini API key.`;
+                    }
+                    throw new Error(errMsg);
+                }
+                
+                const data = await response.json();
+                if (data.candidates && data.candidates[0].content) {
+                    return data.candidates[0].content.parts[0].text;
+                } else {
+                    throw new Error("Invalid API response format");
+                }
+            } catch (error) {
+                console.error("Gemini API Error:", error);
+                return `**Error processing request:** ${error.message}\n\n*Please ensure your Gemini API key is configured in Settings.*`;
+            }
+        }
+
+        async function runAgent(agentId) {
+            const text = state.data[agentId].text;
+            if (text.trim().length < 50) {
+                alert("Please provide a substantial amount of text (at least a few sentences) to run the analysis.");
+                return;
+            }
+
+            state.isProcessing = true;
+            const btn = document.getElementById('btn-run');
+            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Processing...`;
+            btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            
+            document.getElementById('console-wrapper').classList.remove('hidden');
+            document.getElementById('console-output').innerHTML = `<div class="flex items-center gap-3 text-accent-blue"><div class="loader"></div> Communicating with AI...</div>`;
+
+            // API Call
+            const agentProfile = systemAgents.find(a => a.id === agentId);
+            const prompt = `Review the following text excerpt from the thesis:\n\n---\n${text.substring(0, 30000)}\n---\n\nProvide your analysis based on your persona.`;
+            
+            const responseText = await fetchGeminiResponse(agentProfile.systemPrompt, prompt);
+
+            state.data[agentId].output = responseText;
+            state.data[agentId].status = 'Approved';
+            
+            state.isProcessing = false;
+            renderSidebar();
+            renderWorkspace();
+        }
+
+        async function runFullTribunal() {
+            let readyCount = 0;
+            systemAgents.forEach(a => { if(state.data[a.id].status === 'Approved') readyCount++; });
+            if (readyCount !== systemAgents.length) {
+                alert("All chapters and the Coherence Master must be 'Approved' before running the Master Tribunal.");
+                return;
+            }
+
+            state.isProcessing = true;
+            const btn = document.getElementById('btn-tribunal');
+            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing...`;
+            btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+
+            document.getElementById('tribunal-wrapper').classList.remove('hidden');
+            document.getElementById('tribunal-output').innerHTML = `<div class="flex items-center gap-3 text-accent-purple"><div class="loader border-t-accent-purple"></div> The Tribunal is deliberating across all chapters...</div>`;
+
+            let aggregatedText = "";
+            systemAgents.forEach(a => {
+                aggregatedText += `\n\n[${a.title} Output Summary]:\n` + state.data[a.id].output.substring(0, 2000);
+            });
+
+            const systemPrompt = `You are the Master Tribunal, the final arbiter for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture". You have received summaries of critiques from 6 specialized agents (Foundation, Theory, Methodology, Analysis, Synthesis, Coherence).
+            
+            Your job is to:
+            1. Provide a "Final Consensus Review" summarizing the overall readiness of the thesis.
+            2. Evaluate APA 7th Edition compliance across the provided data.
+            3. Act as a "Humanizer" to point out any remaining robotic phrasing or areas lacking a natural academic voice.
+            4. Provide a final defense-readiness score out of 100.
+            
+            Format clearly in Markdown.`;
+
+            const userPrompt = `Here are the critiques from the subordinate agents:\n\n${aggregatedText}\n\nPlease generate the Master Tribunal Consensus Report.`;
+
+            const responseText = await fetchGeminiResponse(systemPrompt, userPrompt);
+
+            state.data.tribunal.output = responseText;
+            state.data.tribunal.status = 'Approved';
+
+            state.isProcessing = false;
+            renderSidebar();
+            renderWorkspace();
+        }
+
+        // Add tailwind keyframes manually
+        tailwind.config.theme.extend.keyframes = {
+            fadeIn: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
+        };
+
+        // Start
+        window.onload = initApp;
+    </script>
+</body>
+</html>
