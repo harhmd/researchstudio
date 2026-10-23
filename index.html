@@ -152,6 +152,12 @@
                     <span class="px-1.5 py-0.2 rounded text-[10px] bg-accent-purple/20 text-accent-purple font-semibold" id="header-active-tier-tag">Free</span>
                 </div>
 
+                <!-- Run All Concurrently Button -->
+                <button onclick="runAllChaptersConcurrently()" class="flex items-center gap-2 bg-gradient-to-r from-accent-blue to-teal-600 hover:from-blue-500 hover:to-teal-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-md shadow-blue-500/20 transition-all active:scale-95" title="Run all ready chapters in parallel">
+                    <i class="fa-solid fa-bolt text-amber-300"></i>
+                    <span>Run All Concurrently</span>
+                </button>
+
                 <button onclick="openKeyManagerModal()" class="flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-md shadow-purple-500/20 transition-all">
                     <i class="fa-solid fa-key"></i>
                     <span>Manage Keys</span>
@@ -613,15 +619,14 @@
         let state = {
             activeTab: 'ch1',
             data: {
-                ch1: { text: '', output: '', status: 'Pending' },
-                ch2: { text: '', output: '', status: 'Pending' },
-                ch3: { text: '', output: '', status: 'Pending' },
-                ch4: { text: '', output: '', status: 'Pending' },
-                ch5: { text: '', output: '', status: 'Pending' },
-                coherence: { text: '', output: '', status: 'Pending' },
-                tribunal: { output: '', status: 'Pending' }
-            },
-            isProcessing: false
+                ch1: { text: '', output: '', status: 'Pending', isRunning: false },
+                ch2: { text: '', output: '', status: 'Pending', isRunning: false },
+                ch3: { text: '', output: '', status: 'Pending', isRunning: false },
+                ch4: { text: '', output: '', status: 'Pending', isRunning: false },
+                ch5: { text: '', output: '', status: 'Pending', isRunning: false },
+                coherence: { text: '', output: '', status: 'Pending', isRunning: false },
+                tribunal: { output: '', status: 'Pending', isRunning: false }
+            }
         };
 
         // App Initialization
@@ -1217,25 +1222,44 @@
             systemAgents.forEach(agent => {
                 const isActive = state.activeTab === agent.id;
                 const status = state.data[agent.id].status;
+                const isRunning = state.data[agent.id].isRunning;
                 const btn = document.createElement('button');
                 btn.className = `w-full text-left px-4 py-3 rounded-xl mb-1 flex items-center gap-3 transition-all ${isActive ? 'bg-dark-700 text-white shadow-md' : 'text-slate-400 hover:bg-dark-700/50 hover:text-slate-200'}`;
-                btn.onclick = () => { if(!state.isProcessing) { state.activeTab = agent.id; renderSidebar(); renderWorkspace(); } };
+                btn.onclick = () => {
+                    state.activeTab = agent.id;
+                    renderSidebar();
+                    renderWorkspace();
+                };
+
+                let statusBadge = '';
+                if (isRunning) {
+                    statusBadge = `<div class="loader ml-auto border-t-accent-purple" style="width:14px;height:14px;border-width:2px;" title="Running concurrently in background..."></div>`;
+                } else if (status === 'Approved') {
+                    statusBadge = `<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>`;
+                }
+
                 btn.innerHTML = `
-                    <i class="fa-solid ${agent.icon} ${isActive ? agent.color : ''} w-5 text-center"></i>
-                    <span class="text-sm font-medium truncate">${agent.title}</span>
-                    ${status === 'Approved' ? '<i class="fa-solid fa-circle-check text-accent-green ml-auto text-xs"></i>' : ''}
+                    <i class="fa-solid ${agent.icon} ${isActive ? agent.color : ''} ${isRunning ? 'animate-pulse text-accent-purple' : ''} w-5 text-center"></i>
+                    <span class="text-sm font-medium truncate flex-1">${agent.title}</span>
+                    ${statusBadge}
                 `;
                 nav.appendChild(btn);
             });
 
             // Master Tribunal Tab
             const isTribunalActive = state.activeTab === 'tribunal';
+            const isTribRunning = state.data.tribunal.isRunning;
             const tribBtn = document.createElement('button');
             tribBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-4 flex items-center gap-3 transition-all border border-accent-purple/30 ${isTribunalActive ? 'bg-accent-purple/20 text-white border-accent-purple/50' : 'text-accent-purple hover:bg-accent-purple/10'}`;
-            tribBtn.onclick = () => { if(!state.isProcessing) { state.activeTab = 'tribunal'; renderSidebar(); renderWorkspace(); } };
+            tribBtn.onclick = () => {
+                state.activeTab = 'tribunal';
+                renderSidebar();
+                renderWorkspace();
+            };
             tribBtn.innerHTML = `
-                <i class="fa-solid fa-gavel w-5 text-center"></i>
-                <span class="text-sm font-bold">Master Tribunal</span>
+                <i class="fa-solid fa-gavel w-5 text-center ${isTribRunning ? 'animate-bounce' : ''}"></i>
+                <span class="text-sm font-bold flex-1">Master Tribunal</span>
+                ${isTribRunning ? '<div class="loader ml-auto border-t-accent-purple" style="width:14px;height:14px;border-width:2px;"></div>' : ''}
             `;
             nav.appendChild(tribBtn);
         }
@@ -1254,6 +1278,7 @@
         function renderAgentWorkspace(container) {
             const agent = systemAgents.find(a => a.id === state.activeTab);
             const data = state.data[agent.id];
+            const isRunning = data.isRunning;
             const wordCount = data.text ? data.text.trim().split(/\s+/).length : 0;
 
             const html = `
@@ -1263,8 +1288,15 @@
                             <h3 class="text-2xl font-bold text-white mb-1"><i class="fa-solid ${agent.icon} ${agent.color} mr-3"></i>${agent.title}</h3>
                             <p class="text-sm text-slate-400">${agent.desc}</p>
                         </div>
-                        <div class="px-3 py-1 rounded-md text-xs font-semibold border ${data.status === 'Approved' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-dark-700 text-slate-300 border-dark-600'}">
-                            Status: ${data.status}
+                        <div class="flex items-center gap-2">
+                            ${isRunning ? `
+                            <div class="px-3 py-1 rounded-md text-xs font-semibold bg-accent-purple/20 text-accent-purple border border-accent-purple/30 flex items-center gap-2 animate-pulse">
+                                <div class="loader" style="width:12px;height:12px;border-width:2px;"></div>
+                                <span>Running Concurrently...</span>
+                            </div>` : ''}
+                            <div class="px-3 py-1 rounded-md text-xs font-semibold border ${data.status === 'Approved' ? 'bg-accent-green/10 text-accent-green border-accent-green/20' : 'bg-dark-700 text-slate-300 border-dark-600'}">
+                                Status: ${data.status}
+                            </div>
                         </div>
                     </div>
 
@@ -1319,30 +1351,38 @@
                         <textarea id="chap-textarea" class="w-full h-64 bg-transparent p-5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-y" placeholder="Paste text here, or upload your PDF/Word document above..." oninput="handleTextChange('${agent.id}', this.value)"></textarea>
                     </div>
 
-                    <div class="flex justify-between items-center">
-                        <button onclick="clearText('${agent.id}')" class="text-xs text-slate-400 hover:text-rose-400 transition-colors">
+                    <div class="flex flex-wrap gap-3 justify-between items-center">
+                        <button onclick="clearText('${agent.id}')" ${isRunning ? 'disabled' : ''} class="text-xs text-slate-400 hover:text-rose-400 transition-colors ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}">
                             <i class="fa-solid fa-trash-can mr-1"></i> Clear Input
                         </button>
-                        <button id="btn-run" onclick="runAgent('${agent.id}')" class="flex items-center gap-2 bg-gradient-to-r from-accent-blue to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow-lg shadow-blue-500/25 transition-all active:scale-95">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i> Run Agent Review
-                        </button>
+                        <div class="flex items-center gap-2.5">
+                            <button onclick="runAllChaptersConcurrently()" class="flex items-center gap-2 bg-dark-700 hover:bg-dark-600 text-slate-200 px-4 py-2.5 rounded-lg text-xs font-semibold border border-dark-600 transition-all active:scale-95" title="Run reviews for all chapters that have text simultaneously">
+                                <i class="fa-solid fa-bolt text-amber-300"></i> Run All in Parallel
+                            </button>
+                            <button id="btn-run" onclick="runAgent('${agent.id}')" ${isRunning ? 'disabled' : ''} class="flex items-center gap-2 bg-gradient-to-r from-accent-blue to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold shadow-lg shadow-blue-500/25 transition-all ${isRunning ? 'opacity-75 cursor-not-allowed pointer-events-none' : 'active:scale-95'}">
+                                ${isRunning ? '<div class="loader mr-2 border-t-white border-white/30"></div> Running Concurrently...' : '<i class="fa-solid fa-wand-magic-sparkles"></i> Run Agent Review'}
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Output Console -->
-                    <div id="console-wrapper" class="mt-8 border border-dark-700 rounded-xl bg-dark-800 shadow-xl overflow-hidden ${data.output ? '' : 'hidden'}">
+                    <div id="console-wrapper" class="mt-8 border border-dark-700 rounded-xl bg-dark-800 shadow-xl overflow-hidden ${data.output || isRunning ? '' : 'hidden'}">
                         <div class="bg-dark-900 px-4 py-3 border-b border-dark-700 flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <i class="fa-solid fa-terminal text-accent-teal"></i>
                                 <span class="text-sm font-semibold text-slate-200">AI Agent Console Output</span>
+                                ${isRunning ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-accent-purple/20 text-accent-purple border border-accent-purple/30 font-semibold animate-pulse">Running in Background</span>' : ''}
                             </div>
                             <div class="flex items-center gap-2">
-                                <button onclick="downloadOutput('${agent.id}')" class="text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 px-3 py-1.5 rounded-md border border-dark-600 transition-colors">
+                                <button onclick="downloadOutput('${agent.id}')" ${isRunning || !data.output ? 'disabled' : ''} class="text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 px-3 py-1.5 rounded-md border border-dark-600 transition-colors ${isRunning || !data.output ? 'opacity-50 cursor-not-allowed' : ''}">
                                     <i class="fa-solid fa-download mr-1"></i> Export
                                 </button>
                             </div>
                         </div>
                         <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[150px]" id="console-output">
-                            ${data.output ? marked.parse(data.output) : ''}
+                            ${isRunning 
+                                ? '<div class="flex items-center gap-3 text-accent-blue"><div class="loader"></div> <span>Communicating with AI agent concurrently in the background... (You can switch tabs freely)</span></div>' 
+                                : (data.output ? marked.parse(data.output) : '')}
                         </div>
                     </div>
                 </div>
@@ -1452,39 +1492,62 @@
         }
 
         async function runAgent(agentId) {
-            const text = state.data[agentId].text;
+            const data = state.data[agentId];
+            if (data.isRunning) return;
+
+            const text = data.text;
             if (text.trim().length < 50) {
-                alert("Please provide a substantial amount of text (at least a few sentences) to run the analysis.");
+                alert(`Please provide text (at least 50 characters) for ${agentId.toUpperCase()} before running review.`);
                 return;
             }
 
-            state.isProcessing = true;
-            const btn = document.getElementById('btn-run');
-            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Processing...`;
-            btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
-            
-            document.getElementById('console-wrapper').classList.remove('hidden');
-            document.getElementById('console-output').innerHTML = `<div class="flex items-center gap-3 text-accent-blue"><div class="loader"></div> Communicating with AI agent (Rotator Active)...</div>`;
+            data.isRunning = true;
+            renderSidebar();
+            if (state.activeTab === agentId) {
+                renderWorkspace();
+            }
 
             const agentProfile = systemAgents.find(a => a.id === agentId);
+            showToast(`Review started for <strong>${agentProfile.title}</strong> (Running concurrently)...`, 'info');
             const prompt = `Review the following text excerpt from the thesis:\n\n---\n${text.substring(0, 30000)}\n---\n\nProvide your analysis based on your persona.`;
             
             try {
                 const responseText = await fetchGeminiWithRotation(agentProfile.systemPrompt, prompt);
-                state.data[agentId].output = responseText;
-                state.data[agentId].status = 'Approved';
+                data.output = responseText;
+                data.status = 'Approved';
+                data.isRunning = false;
                 showToast(`Analysis completed for <strong>${agentProfile.title}</strong>!`, 'success');
             } catch(e) {
-                state.data[agentId].output = `**Error processing agent review:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
-                showToast(`Review failed: ${e.message}`, 'error');
+                data.output = `**Error processing agent review:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
+                data.isRunning = false;
+                showToast(`Review failed for ${agentProfile.title}: ${e.message}`, 'error');
             }
 
-            state.isProcessing = false;
             renderSidebar();
-            renderWorkspace();
+            if (state.activeTab === agentId || state.activeTab === 'tribunal') {
+                renderWorkspace();
+            }
+        }
+
+        function runAllChaptersConcurrently() {
+            const readyToRun = systemAgents.filter(a => {
+                const d = state.data[a.id];
+                return d.text.trim().length >= 50 && !d.isRunning;
+            });
+
+            if (readyToRun.length === 0) {
+                alert("No ready chapters to run. Please paste or upload text into one or more chapters first (at least 50 characters each).");
+                return;
+            }
+
+            showToast(`🚀 Running <strong>${readyToRun.length} chapters concurrently</strong> in parallel!`, 'info');
+            readyToRun.forEach(agent => {
+                runAgent(agent.id);
+            });
         }
 
         async function runFullTribunal() {
+            if (state.data.tribunal.isRunning) return;
             const approvedAgents = systemAgents.filter(a => state.data[a.id].status === 'Approved');
             const pendingAgents = systemAgents.filter(a => state.data[a.id].status !== 'Approved');
             const readyCount = approvedAgents.length;
@@ -1495,19 +1558,27 @@
             }
 
             const isFull = readyCount === systemAgents.length;
+            state.data.tribunal.isRunning = true;
+            renderSidebar();
+            renderWorkspace();
 
-            state.isProcessing = true;
             const btn = document.getElementById('btn-tribunal');
-            btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing (${readyCount}/${systemAgents.length})...`;
-            btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            if (btn) {
+                btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing (${readyCount}/${systemAgents.length})...`;
+                btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
+            }
 
-            document.getElementById('tribunal-wrapper').classList.remove('hidden');
-            document.getElementById('tribunal-output').innerHTML = `
-                <div class="flex items-center gap-3 text-accent-purple">
-                    <div class="loader border-t-accent-purple"></div> 
-                    <span>The Master Tribunal is deliberating on ${readyCount} approved component(s) (${isFull ? 'Full Consensus' : 'Partial Stage Consensus'})...</span>
-                </div>
-            `;
+            const tribWrapper = document.getElementById('tribunal-wrapper');
+            if (tribWrapper) tribWrapper.classList.remove('hidden');
+            const tribOutput = document.getElementById('tribunal-output');
+            if (tribOutput) {
+                tribOutput.innerHTML = `
+                    <div class="flex items-center gap-3 text-accent-purple">
+                        <div class="loader border-t-accent-purple"></div> 
+                        <span>The Master Tribunal is deliberating on ${readyCount} approved component(s) (${isFull ? 'Full Consensus' : 'Partial Stage Consensus'})...</span>
+                    </div>
+                `;
+            }
 
             let aggregatedText = "";
             approvedAgents.forEach(a => {
@@ -1534,15 +1605,18 @@ Format clearly in structured GitHub Markdown with bold headings and bullet point
                 const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                 state.data.tribunal.output = responseText;
                 state.data.tribunal.status = 'Approved';
+                state.data.tribunal.isRunning = false;
                 showToast(`Master Tribunal Consensus generated (${readyCount}/${systemAgents.length} components)!`, 'success');
             } catch(e) {
                 state.data.tribunal.output = `**Tribunal synthesis failed:**\n\n${e.message}`;
+                state.data.tribunal.isRunning = false;
                 showToast(`Tribunal failed: ${e.message}`, 'error');
             }
 
-            state.isProcessing = false;
             renderSidebar();
-            renderWorkspace();
+            if (state.activeTab === 'tribunal') {
+                renderWorkspace();
+            }
         }
 
         // Add tailwind keyframes manually
