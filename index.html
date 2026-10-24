@@ -689,7 +689,10 @@
                         originalWords: 0,
                         rephrasedWords: 0,
                         changePercent: 0
-                    }
+                    },
+                    chapterScope: 'all', // 'all', 'ch1', 'ch2', 'ch3', 'ch4', 'ch5'
+                    activeResultTab: 'all', // 'all', 'ch1', 'ch2', 'ch3', 'ch4', 'ch5'
+                    parsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' }
                 }
             }
         };
@@ -2591,9 +2594,27 @@
             const isRunning = rep.isRunning;
             const hasOutput = !!rep.output;
             const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
+            const chapterScope = rep.chapterScope || 'all';
 
             // Target word estimation calculation
             const targetEstimateText = getRephraserTargetEstimate(activeWords, customPercent);
+
+            // Compute parsed chapters and active tab content
+            const parsedChapters = rep.parsedChapters || parseRephraserChapters(rep.output || '');
+            const hasCh1 = !!(parsedChapters.ch1 && parsedChapters.ch1.trim().length > 30);
+            const hasCh2 = !!(parsedChapters.ch2 && parsedChapters.ch2.trim().length > 30);
+            const hasCh3 = !!(parsedChapters.ch3 && parsedChapters.ch3.trim().length > 30);
+            const hasCh4 = !!(parsedChapters.ch4 && parsedChapters.ch4.trim().length > 30);
+            const hasCh5 = !!(parsedChapters.ch5 && parsedChapters.ch5.trim().length > 30);
+            const activeResultTab = rep.activeResultTab || 'all';
+
+            let activeContent = '';
+            if (activeResultTab === 'all') {
+                activeContent = rep.output || '';
+            } else {
+                activeContent = (parsedChapters && parsedChapters[activeResultTab]) ? parsedChapters[activeResultTab] : '';
+            }
+            const activeTabWords = activeContent.trim() ? activeContent.trim().split(/\s+/).length : 0;
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -2641,7 +2662,10 @@
                                     <button onclick="toggleRephraserImportMenu(event)" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-300 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5">
                                         <i class="fa-solid fa-download"></i> Import from Studio <i class="fa-solid fa-chevron-down text-[10px]"></i>
                                     </button>
-                                    <div id="rephraser-import-menu" class="hidden absolute right-0 mt-1 w-48 rounded-lg bg-dark-850 border border-dark-700 shadow-2xl py-1 z-30">
+                                    <div id="rephraser-import-menu" class="hidden absolute right-0 mt-1 w-52 rounded-lg bg-dark-850 border border-dark-700 shadow-2xl py-1 z-30">
+                                        <button onclick="importFromStudioToRephraser('all')" class="w-full text-left px-3 py-1.5 text-xs text-indigo-300 hover:bg-dark-700 hover:text-white flex items-center gap-2 border-b border-dark-750 font-semibold">
+                                            <i class="fa-solid fa-layer-group text-indigo-400"></i> All Chapters (Full Thesis)
+                                        </button>
                                         <button onclick="importFromStudioToRephraser('ch1')" class="w-full text-left px-3 py-1.5 text-xs text-slate-300 hover:bg-dark-700 hover:text-white flex items-center gap-2">
                                             <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 Draft
                                         </button>
@@ -2665,6 +2689,41 @@
 
                                 <button onclick="clearRephraserInput()" class="text-xs bg-dark-700 hover:bg-rose-900/30 text-slate-400 hover:text-rose-300 px-2.5 py-1.5 rounded-lg border border-dark-600 transition-colors" title="Clear input">
                                     <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Chapter Scope Selector -->
+                        <div class="bg-dark-900/60 border border-dark-750 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-crosshairs text-indigo-400"></i>
+                                <span class="text-xs font-semibold text-slate-200">Rephrase Scope:</span>
+                                <span class="text-[11px] text-slate-400">Choose chapter target or rephrase entire manuscript:</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button type="button" onclick="setRephraserChapterScope('all')" 
+                                        class="px-3 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    <i class="fa-solid fa-layer-group text-[10px] mr-1"></i> All Chapters
+                                </button>
+                                <button type="button" onclick="setRephraserChapterScope('ch1')" 
+                                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'ch1' ? 'bg-blue-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    Ch 1
+                                </button>
+                                <button type="button" onclick="setRephraserChapterScope('ch2')" 
+                                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'ch2' ? 'bg-teal-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    Ch 2
+                                </button>
+                                <button type="button" onclick="setRephraserChapterScope('ch3')" 
+                                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'ch3' ? 'bg-purple-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    Ch 3
+                                </button>
+                                <button type="button" onclick="setRephraserChapterScope('ch4')" 
+                                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'ch4' ? 'bg-pink-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    Ch 4
+                                </button>
+                                <button type="button" onclick="setRephraserChapterScope('ch5')" 
+                                        class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${chapterScope === 'ch5' ? 'bg-amber-600 text-white shadow-sm' : 'bg-dark-800 text-slate-300 hover:bg-dark-700 border border-dark-700'}">
+                                    Ch 5
                                 </button>
                             </div>
                         </div>
@@ -2959,7 +3018,7 @@
                         </button>
                     </div>
 
-                    <!-- Step 4: Rephrased Output & Audit Dashboard -->
+                    <!-- Step 4: Rephrased Output & Chapter Dashboard -->
                     <div id="rephraser-output-panel" class="border border-dark-700 rounded-xl bg-dark-900 shadow-xl overflow-hidden ${hasOutput || isRunning ? '' : 'hidden'}">
                         
                         <!-- Header & Audit Badges -->
@@ -2983,21 +3042,51 @@
                             </div>
                         </div>
 
-                        <!-- Action Toolbar (Apply, Copy, Export) -->
-                        <div class="bg-dark-800 px-4 py-2.5 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
-                            <!-- Apply to Studio Chapter -->
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-xs text-slate-400 font-medium mr-1">Apply to:</span>
-                                <button onclick="applyRephraserToStudio('ch1')" class="text-xs bg-dark-700 hover:bg-blue-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 1 in Studio">Ch 1</button>
-                                <button onclick="applyRephraserToStudio('ch2')" class="text-xs bg-dark-700 hover:bg-teal-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 2 in Studio">Ch 2</button>
-                                <button onclick="applyRephraserToStudio('ch3')" class="text-xs bg-dark-700 hover:bg-purple-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 3 in Studio">Ch 3</button>
-                                <button onclick="applyRephraserToStudio('ch4')" class="text-xs bg-dark-700 hover:bg-pink-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 4 in Studio">Ch 4</button>
-                                <button onclick="applyRephraserToStudio('ch5')" class="text-xs bg-dark-700 hover:bg-amber-600 text-slate-200 hover:text-white px-2.5 py-1 rounded transition-colors" title="Apply to Chapter 5 in Studio">Ch 5</button>
+                        <!-- Chapter Tabs Navigation (All Chapters, Ch 1 - Ch 5) -->
+                        <div class="bg-dark-800 px-4 py-3 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <button onclick="switchRephraserResultTab('all')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-layer-group"></i> All Chapters
+                                </button>
+                                <button onclick="switchRephraserResultTab('ch1')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 ${hasCh1 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchRephraserResultTab('ch2')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-book-open text-teal-400"></i> Chapter 2 ${hasCh2 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchRephraserResultTab('ch3')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-flask text-purple-400"></i> Chapter 3 ${hasCh3 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchRephraserResultTab('ch4')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-chart-pie text-pink-400"></i> Chapter 4 ${hasCh4 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
+                                <button onclick="switchRephraserResultTab('ch5')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 ${hasCh5 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
                             </div>
 
                             <div class="flex flex-wrap items-center gap-2">
-                                <button onclick="copyRephraserOutput()" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5" title="Copy output to clipboard">
-                                    <i class="fa-solid fa-copy"></i> Copy
+                                ${activeResultTab !== 'all' ? `
+                                <button onclick="applyRephraserChapterToStudio('${activeResultTab}')" 
+                                        class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-1.5" 
+                                        title="Sync ${activeResultTab.toUpperCase()} directly into Studio workspace">
+                                    <i class="fa-solid fa-file-import"></i> Apply to ${activeResultTab.toUpperCase()} in Studio
+                                </button>
+                                ` : `
+                                <button onclick="applyAllRephraserChaptersToStudio()" 
+                                        class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-1.5" 
+                                        title="Apply all rephrased chapters across Chapters 1-5 in Studio">
+                                    <i class="fa-solid fa-check-double"></i> Apply All to Studio
+                                </button>
+                                `}
+                                <button onclick="copyCurrentRephraserTab()" class="text-xs bg-dark-700 hover:bg-dark-600 text-slate-200 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5" title="Copy current chapter or full text to clipboard">
+                                    <i class="fa-solid fa-copy"></i> Copy ${activeResultTab === 'all' ? 'All' : activeResultTab.toUpperCase()}
                                 </button>
 
                                 <!-- Rich Document Export Suite -->
@@ -3020,7 +3109,7 @@
                                     <button onclick="exportRephraserToPdf()" 
                                             class="text-xs bg-rose-600 hover:bg-rose-500 text-white font-semibold px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ml-1" 
                                             title="Export as PDF Document (.pdf) with styled tables">
-                                        <i class="fa-solid fa-file-pdf"></i> PDF (.pdf)
+                                        <i class="fa-solid fa-file-pdf"></i> PDF
                                     </button>
 
                                     <!-- RTF (.rtf) -->
@@ -3040,11 +3129,26 @@
                             </div>
                         </div>
 
+                        <!-- Active Tab Status Bar -->
+                        <div class="bg-dark-850/60 px-6 py-2 border-b border-dark-750 flex items-center justify-between text-xs text-slate-400">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-slate-200">
+                                    ${activeResultTab === 'all' ? 'Unified Manuscript (All Chapters)' : `Displaying: ${activeResultTab.toUpperCase()}`}
+                                </span>
+                                <span class="text-[11px] bg-dark-750 text-indigo-300 px-2 py-0.5 rounded-full border border-dark-700">
+                                    ${activeTabWords.toLocaleString()} words
+                                </span>
+                            </div>
+                            <div class="text-[11px] text-slate-500">
+                                ${activeResultTab === 'all' ? 'All chapter sections combined' : `Individual chapter slice ready to sync or export`}
+                            </div>
+                        </div>
+
                         <!-- Rendered Output Area -->
                         <div class="p-6 text-sm text-slate-300 leading-relaxed markdown-body min-h-[220px]" id="rephraser-output">
                             ${isRunning 
                                 ? '<div class="flex items-center gap-3 text-indigo-400"><div class="loader border-t-indigo-400"></div> <span>Executing doctoral rephrasing, modulating word length, eliminating AI indicators, and generating Turnitin-compliant text...</span></div>' 
-                                : (rep.output ? marked.parse(rep.output) : '<div class="text-slate-500 italic">No rephrased output yet. Click "Rephrase Manuscript" above to execute.</div>')}
+                                : (activeContent ? marked.parse(activeContent) : '<div class="text-slate-500 italic">No content available for this chapter view. Click "All Chapters" or run rephrase above.</div>')}
                         </div>
                     </div>
                 </div>
@@ -3215,15 +3319,44 @@ This disconnect establishes the central empirical problem of this investigation.
             showToast('Loaded sample manuscript draft into Rephraser!', 'info');
         }
 
+        function setRephraserChapterScope(scope) {
+            state.data.rephraser.chapterScope = scope;
+            if (scope !== 'all') {
+                state.data.rephraser.activeResultTab = scope;
+            } else {
+                state.data.rephraser.activeResultTab = 'all';
+            }
+            renderWorkspace();
+            showToast(`Rephrase scope set to: <strong>${scope === 'all' ? 'All Chapters (Full Thesis)' : scope.toUpperCase()}</strong>`, 'info');
+        }
+
+        function switchRephraserResultTab(tabName) {
+            state.data.rephraser.activeResultTab = tabName;
+            renderWorkspace();
+        }
+
         function importFromStudioToRephraser(sourceId) {
             let textToImport = '';
             let label = '';
-            if (sourceId === 'agent7') {
+            if (sourceId === 'all') {
+                const parts = [];
+                ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].forEach((cid, idx) => {
+                    const txt = getActiveChapterText(cid);
+                    if (txt) {
+                        parts.push(`### CHAPTER ${idx + 1}: MANUSCRIPT DRAFT\n${txt}`);
+                    }
+                });
+                textToImport = parts.join('\n\n---\n\n');
+                label = 'All Chapters (Full Thesis Drafts)';
+                state.data.rephraser.chapterScope = 'all';
+            } else if (sourceId === 'agent7') {
                 textToImport = state.data.correction.agent7Output || state.data.correction.output || '';
                 label = 'Agent 7 Final Output';
+                state.data.rephraser.chapterScope = 'all';
             } else {
-                textToImport = state.data[sourceId]?.fileText || state.data[sourceId]?.pastedText || state.data[sourceId]?.text || '';
+                textToImport = getActiveChapterText(sourceId);
                 label = sourceId.toUpperCase();
+                state.data.rephraser.chapterScope = sourceId;
             }
 
             if (!textToImport || textToImport.trim().length === 0) {
@@ -3236,34 +3369,48 @@ This disconnect establishes the central empirical problem of this investigation.
             state.data.rephraser.fileText = '';
             state.data.rephraser.fileWords = 0;
             state.data.rephraser.hasUploadedFile = false;
-            state.data.rephraser.fileName = `Imported_${label}.txt`;
+            state.data.rephraser.fileName = `Imported_${label.replace(/\s+/g, '_')}.txt`;
             const words = textToImport.trim().split(/\s+/).length;
             renderWorkspace();
             updateRephraserTargetEstimate(words);
             showToast(`Imported <strong>${words.toLocaleString()} words</strong> from ${label}!`, 'success');
         }
 
-        function copyRephraserOutput() {
-            const out = state.data.rephraser.output;
-            if (!out) {
-                alert("No rephrased output to copy.");
+        function copyCurrentRephraserTab() {
+            const rep = state.data.rephraser;
+            const tab = rep.activeResultTab || 'all';
+            let textToCopy = '';
+            if (tab === 'all') {
+                textToCopy = rep.output || rep.text || '';
+            } else if (rep.parsedChapters && rep.parsedChapters[tab]) {
+                textToCopy = rep.parsedChapters[tab];
+            } else {
+                textToCopy = rep.output || '';
+            }
+            if (!textToCopy) {
+                alert("No rephrased content to copy.");
                 return;
             }
-            navigator.clipboard.writeText(out).then(() => {
-                showToast("Copied rephrased text to clipboard!", "info");
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast(`Copied ${tab === 'all' ? 'complete manuscript' : tab.toUpperCase()} to clipboard!`, "info");
             }).catch(e => {
                 alert("Could not copy text: " + e.message);
             });
         }
 
-        function applyRephraserToStudio(chapId) {
-            const out = state.data.rephraser.output;
-            if (!out || out.trim().length === 0) {
-                alert("No rephrased content available to apply.");
+        function copyRephraserOutput() {
+            copyCurrentRephraserTab();
+        }
+
+        function applyRephraserChapterToStudio(chapId) {
+            const rep = state.data.rephraser;
+            const textToApply = (rep.parsedChapters && rep.parsedChapters[chapId]) ? rep.parsedChapters[chapId] : rep.output;
+            if (!textToApply || textToApply.trim().length === 0) {
+                alert(`No rephrased content available for ${chapId.toUpperCase()}.`);
                 return;
             }
-            state.data[chapId].text = out;
-            state.data[chapId].pastedText = out;
+            state.data[chapId].text = textToApply;
+            state.data[chapId].pastedText = textToApply;
             state.data[chapId].fileText = '';
             state.data[chapId].fileName = '';
             state.data[chapId].fileWords = 0;
@@ -3271,6 +3418,43 @@ This disconnect establishes the central empirical problem of this investigation.
             state.data[chapId].status = 'Approved';
             showToast(`<strong>${chapId.toUpperCase()}</strong> updated in Studio with humanized rephrased text!`, 'success');
             renderSidebar();
+            if (state.activeTab === chapId) {
+                renderWorkspace();
+            }
+        }
+
+        function applyAllRephraserChaptersToStudio() {
+            const rep = state.data.rephraser;
+            const parsed = rep.parsedChapters || parseRephraserChapters(rep.output);
+            let updatedCount = 0;
+            ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].forEach(cid => {
+                if (parsed[cid] && parsed[cid].trim().length > 30) {
+                    state.data[cid].text = parsed[cid];
+                    state.data[cid].pastedText = parsed[cid];
+                    state.data[cid].fileText = '';
+                    state.data[cid].fileName = '';
+                    state.data[cid].fileWords = 0;
+                    state.data[cid].hasUploadedFile = false;
+                    state.data[cid].status = 'Approved';
+                    updatedCount++;
+                }
+            });
+
+            if (updatedCount === 0) {
+                if (rep.output && rep.output.trim().length > 30) {
+                    applyRephraserChapterToStudio('ch1');
+                    return;
+                }
+                alert("No rephrased chapters could be applied.");
+                return;
+            }
+
+            showToast(`Applied rephrased chapters across <strong>${updatedCount} chapters</strong> in Studio!`, 'success');
+            renderSidebar();
+        }
+
+        function applyRephraserToStudio(chapId) {
+            applyRephraserChapterToStudio(chapId);
         }
 
         function insertSampleCorrection() {
@@ -3359,6 +3543,33 @@ This disconnect establishes the central empirical problem of this investigation.
 
             const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*6\b|TURNITIN\s*&|$))/i);
             if (m5) chapters.ch5 = m5[0].trim();
+
+            return chapters;
+        }
+
+        function parseRephraserChapters(fullText) {
+            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' };
+            if (!fullText) return chapters;
+
+            const m1 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*1\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*2\b|$)/i);
+            if (m1) chapters.ch1 = m1[0].trim();
+
+            const m2 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*2\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*3\b|$)/i);
+            if (m2) chapters.ch2 = m2[0].trim();
+
+            const m3 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*3\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*4\b|$)/i);
+            if (m3) chapters.ch3 = m3[0].trim();
+
+            const m4 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*4\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*5\b|$)/i);
+            if (m4) chapters.ch4 = m4[0].trim();
+
+            const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*6\b|REFERENCES\b|BIBLIOGRAPHY\b|$))/i);
+            if (m5) chapters.ch5 = m5[0].trim();
+
+            const anyParsed = chapters.ch1 || chapters.ch2 || chapters.ch3 || chapters.ch4 || chapters.ch5;
+            if (!anyParsed && state.data.rephraser.chapterScope && state.data.rephraser.chapterScope !== 'all') {
+                chapters[state.data.rephraser.chapterScope] = fullText.trim();
+            }
 
             return chapters;
         }
@@ -4472,6 +4683,23 @@ The user has requested the following word count directive:
 TARGET DIRECTIVE: ${lengthDirective}
 TARGET WORD COUNT RANGE: Approximately ${targetMin} to ${targetMax} words (Exact Target: ${targetExact} words).
 
+CHAPTER DEMARCATION & STRUCTURING (MANDATORY):
+- Structure the rephrased output strictly chapter by chapter.
+- Clearly demarcate each chapter using explicit markdown headers:
+  ### CHAPTER 1: REPHRASED MANUSCRIPT
+  ... [Chapter 1 text] ...
+  ### CHAPTER 2: REPHRASED MANUSCRIPT
+  ... [Chapter 2 text] ...
+  ### CHAPTER 3: REPHRASED MANUSCRIPT
+  ... [Chapter 3 text] ...
+  ### CHAPTER 4: REPHRASED MANUSCRIPT
+  ... [Chapter 4 text] ...
+  ### CHAPTER 5: REPHRASED MANUSCRIPT
+  ... [Chapter 5 text] ...
+- If the source manuscript represents an individual chapter (e.g. Chapter 1), start directly with its chapter header: "### CHAPTER X: REPHRASED MANUSCRIPT".
+- If the source manuscript contains multiple chapters or the full thesis, preserve and demarcate every chapter in sequence with its respective header.
+- NEVER skip chapter headers or combine chapters together.
+
 CRITICAL HUMANIZATION & AI BYPASS RULES:
 - High Syntactic Burstiness: Intentionally vary sentence lengths from short, punchy 8-12 word claims to sophisticated 25-45 word multi-clause analytical explanations containing subordinate clauses, participial phrases, and appositives.
 - Vocabulary & Perplexity: NEVER use generic, stereotypical generative AI words or transitional formulas.
@@ -4480,10 +4708,11 @@ CRITICAL HUMANIZATION & AI BYPASS RULES:
 - REMOVE ALL AI MARKDOWN / AI INDICATORS:
   - Do NOT write ANY conversational preamble, introduction, or commentary (e.g. "Here is the rephrased text", "Certainly! Below is...").
   - Do NOT write conversational postscripts (e.g. "Let me know if you need more changes").
-  - Begin DIRECTLY with the academic title or chapter heading.
+  - Begin DIRECTLY with the chapter header.
 - STRUCTURED TABLES: If the text discusses constructs, statistical variables, or comparative paradigms, render them using clean Markdown tables (| Col 1 | Col 2 |) so they convert into native Word and PDF tables. Never use ASCII art or plain text for tables.`;
 
                     const userPrompt = `ORIGINAL MANUSCRIPT EXCERPT (${origWords} words):
+Target Chapter Scope: ${rep.chapterScope === 'all' ? 'All Chapters (Full Thesis Draft)' : rep.chapterScope.toUpperCase()}
 ---
 ${text.substring(0, 35000)}
 ---
@@ -4491,7 +4720,7 @@ ${text.substring(0, 35000)}
 LENGTH REQUIREMENT: ${lengthDirective}
 Target: approximately ${targetMin} to ${targetMax} words (Exact Target: ${targetExact} words).
 
-Please provide the completely rephrased, humanized academic manuscript ready for doctoral submission. Comply strictly with Turnitin plagiarism < 20% and AI content < 10%. Output only the academic text.`;
+Please provide the completely rephrased, humanized academic manuscript organized strictly by chapters (demarcated as "### CHAPTER X: REPHRASED MANUSCRIPT"). Comply strictly with Turnitin plagiarism < 20% and AI content < 10%. Output only the academic text.`;
 
                     const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                     cleanOutput = sanitizeRephraserOutput(responseText);
@@ -4506,6 +4735,8 @@ Please provide the completely rephrased, humanized academic manuscript ready for
 Your task is to craft Part I of a massive doctoral monograph expansion (+${customPercent}%, ${multiplier.toFixed(1)}x expansion).
 
 TARGET FOR PART 1: Approximately ${part1Target} words.
+MANDATORY CHAPTER DEMARCATION:
+- Begin Part I with "### CHAPTER 1: REPHRASED MANUSCRIPT", and if applicable continue to "### CHAPTER 2: REPHRASED MANUSCRIPT".
 MANDATORY FOCUS FOR PART 1:
 1. Comprehensive Problem Articulation, Ontological Grounding & Theoretical Epistemology (e.g. Positivist vs. Critical Realist paradigms).
 2. Granular Conceptual Taxonomies & Latent Construct Operationalization. Include at least one comprehensive Markdown comparison table (| Construct | Dimension | Operational Indicator | Seminal Citations |).
@@ -4513,14 +4744,15 @@ MANDATORY FOCUS FOR PART 1:
 
 AUDIT BENCHMARKS: Turnitin Plagiarism < 20% (target < 15%), AI Detection < 10% (target < 8%).
 AVOID BANNED AI CLICHES: "delve", "pivotal", "tapestry", "testament", "moreover", "in conclusion", "ever-evolving", "beacon", "game-changer".
-DO NOT output any conversational preamble or markdown code fence. Begin directly with the Academic Title or Chapter 1 Heading.`;
+DO NOT output any conversational preamble or markdown code fence. Begin directly with the chapter header.`;
 
                     const userPromptPass1 = `SOURCE MANUSCRIPT (${origWords} words):
+Target Chapter Scope: ${rep.chapterScope === 'all' ? 'All Chapters' : rep.chapterScope.toUpperCase()}
 ---
 ${text.substring(0, 35000)}
 ---
 
-Generate Part I of the expanded doctoral treatise. Target length: approximately ${part1Target} words. Output only the academic manuscript.`;
+Generate Part I of the expanded doctoral treatise demarcated by chapters. Target length: approximately ${part1Target} words. Output only the academic manuscript.`;
 
                     const pass1Response = await fetchGeminiWithRotation(systemPromptPass1, userPromptPass1);
                     const cleanPass1 = sanitizeRephraserOutput(pass1Response);
@@ -4531,6 +4763,8 @@ Generate Part I of the expanded doctoral treatise. Target length: approximately 
 Your task is to craft Part II of the massive doctoral monograph expansion (+${customPercent}%, ${multiplier.toFixed(1)}x expansion), continuing directly from Part I with zero redundancy and perfect narrative cohesion.
 
 TARGET FOR PART 2: Approximately ${part2Target} words.
+MANDATORY CHAPTER DEMARCATION:
+- Demarcate Part II chapters starting with "### CHAPTER 3: REPHRASED MANUSCRIPT", continuing to "### CHAPTER 4: REPHRASED MANUSCRIPT" and "### CHAPTER 5: REPHRASED MANUSCRIPT".
 MANDATORY FOCUS FOR PART 2:
 1. Methodological Operationalization & Psychometric Rigor (Cronbach's alpha > 0.70, Composite Reliability > 0.70, AVE > 0.50, HTMT < 0.85, PLS-SEM bootstrapping). Include a structured Markdown measurement model table.
 2. Triangulated Empirical Synthesis & Comparative Literature Dialectic addressing empirical divergences and boundary conditions.
@@ -4539,7 +4773,7 @@ MANDATORY FOCUS FOR PART 2:
 
 AUDIT BENCHMARKS: Turnitin Plagiarism < 20% (target < 15%), AI Detection < 10% (target < 8%).
 AVOID BANNED AI CLICHES: "delve", "pivotal", "tapestry", "testament", "moreover", "in conclusion", "ever-evolving", "beacon", "game-changer".
-DO NOT output any conversational preamble or markdown code fence. Continue directly with Chapter/Section headings.`;
+DO NOT output any conversational preamble or markdown code fence. Continue directly with Chapter headings.`;
 
                     const userPromptPass2 = `SOURCE MANUSCRIPT:
 ---
@@ -4549,7 +4783,7 @@ ${text.substring(0, 35000)}
 SUMMARY OF PART 1 COMPLETED:
 Foundational theory, epistemological paradigms, construct taxonomies, and structural hypotheses have been established.
 
-Generate Part II to complete the master treatise. Target length: approximately ${part2Target} words. Output only the academic manuscript.`;
+Generate Part II to complete the master treatise with Chapters 3, 4, and 5 demarcated. Target length: approximately ${part2Target} words. Output only the academic manuscript.`;
 
                     const pass2Response = await fetchGeminiWithRotation(systemPromptPass2, userPromptPass2);
                     const cleanPass2 = sanitizeRephraserOutput(pass2Response);
@@ -4558,8 +4792,15 @@ Generate Part II to complete the master treatise. Target length: approximately $
                 }
 
                 rep.output = cleanOutput;
+                rep.parsedChapters = parseRephraserChapters(cleanOutput);
                 rep.status = 'Approved';
                 rep.isRunning = false;
+
+                if (rep.chapterScope && rep.chapterScope !== 'all') {
+                    rep.activeResultTab = rep.chapterScope;
+                } else if (!rep.activeResultTab) {
+                    rep.activeResultTab = 'all';
+                }
 
                 const rephrasedWords = cleanOutput.trim().split(/\s+/).length;
                 const changePct = Math.round(((rephrasedWords - origWords) / origWords) * 100);
@@ -4580,58 +4821,69 @@ Generate Part II to complete the master treatise. Target length: approximately $
             if (state.activeTab === 'rephraser') renderWorkspace();
         }
 
-        async function exportRephraserToWord(format = 'docx') {
+        function getActiveRephraserExportContent() {
             const rep = state.data.rephraser;
-            const text = (rep.output || rep.text || '').trim();
+            const tab = rep.activeResultTab || 'all';
+            let text = '';
+            let label = 'Full_Manuscript';
+            let title = 'PhD Thesis: Rephrased & Humanized Manuscript';
+            let isAll = (tab === 'all');
+
+            const parsed = rep.parsedChapters || parseRephraserChapters(rep.output || '');
+            if (tab !== 'all' && parsed && parsed[tab] && parsed[tab].trim().length > 0) {
+                text = parsed[tab].trim();
+                label = tab.toUpperCase();
+                title = `PhD Thesis: Rephrased ${tab.toUpperCase()} Manuscript`;
+            } else {
+                text = (rep.output || rep.text || '').trim();
+            }
+            return { text, label, title, isAll };
+        }
+
+        async function exportRephraserToWord(format = 'docx') {
+            const { text, label, title, isAll } = getActiveRephraserExportContent();
             if (!text) {
                 alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
-            const titleText = 'PhD Thesis: Rephrased & Humanized Manuscript';
-            const subtitleText = 'Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)';
+            const filenameBase = `ResearchStudio_Rephrased_${label}`;
+            const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI) - ${label.replace('_', ' ')}`;
 
-            await exportToWordDocument(text, filenameBase, titleText, subtitleText, format, false);
+            await exportToWordDocument(text, filenameBase, title, subtitleText, format, isAll);
         }
 
         async function exportRephraserToPdf() {
-            const rep = state.data.rephraser;
-            const text = (rep.output || rep.text || '').trim();
+            const { text, label, title, isAll } = getActiveRephraserExportContent();
             if (!text) {
                 alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
-            const titleText = 'PhD Thesis: Rephrased & Humanized Manuscript';
-            const subtitleText = 'Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)';
+            const filenameBase = `ResearchStudio_Rephrased_${label}`;
+            const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI) - ${label.replace('_', ' ')}`;
 
-            await exportToPdfDocument(text, filenameBase, titleText, subtitleText, false);
+            await exportToPdfDocument(text, filenameBase, title, subtitleText, isAll);
         }
 
         function exportRephraserToRtf() {
-            const rep = state.data.rephraser;
-            const text = (rep.output || rep.text || '').trim();
+            const { text, label, title } = getActiveRephraserExportContent();
             if (!text) {
                 alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
-            const docTitle = 'PhD Thesis: Rephrased & Humanized Manuscript';
-
-            exportToRtfDocument(text, filenameBase, docTitle);
+            const filenameBase = `ResearchStudio_Rephrased_${label}`;
+            exportToRtfDocument(text, filenameBase, title);
         }
 
         function downloadRephraserMd() {
-            const rep = state.data.rephraser;
-            const text = (rep.output || rep.text || '').trim();
+            const { text, label } = getActiveRephraserExportContent();
             if (!text) {
                 alert("No content available to export.");
                 return;
             }
-            const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.md`;
+            const filename = `ResearchStudio_Rephrased_${label}_${new Date().toISOString().slice(0, 10)}.md`;
             const blob = new Blob([text], { type: 'text/markdown;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
