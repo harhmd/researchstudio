@@ -1700,28 +1700,42 @@
 
         function renderWorkspace() {
             const container = document.getElementById('workspace-container');
+            if (!container) return;
             container.innerHTML = '';
 
-            if (state.activeTab === 'tribunal') {
-                renderTribunalWorkspace(container);
-                setTimeout(() => {
-                    renderMermaidInDom(document.getElementById('tribunal-output'));
-                }, 80);
-            } else if (state.activeTab === 'correction') {
-                renderCorrectionWorkspace(container);
-                setTimeout(() => {
-                    renderMermaidInDom(document.getElementById('correction-output'));
-                }, 80);
-            } else if (state.activeTab === 'rephraser') {
-                renderRephraserWorkspace(container);
-                setTimeout(() => {
-                    renderMermaidInDom(document.getElementById('rephraser-output'));
-                }, 80);
-            } else {
-                renderAgentWorkspace(container);
-                setTimeout(() => {
-                    renderMermaidInDom(document.getElementById('agent-output'));
-                }, 80);
+            try {
+                if (state.activeTab === 'tribunal') {
+                    renderTribunalWorkspace(container);
+                    setTimeout(() => {
+                        renderMermaidInDom(document.getElementById('tribunal-output'));
+                    }, 80);
+                } else if (state.activeTab === 'correction') {
+                    renderCorrectionWorkspace(container);
+                    setTimeout(() => {
+                        renderMermaidInDom(document.getElementById('correction-output'));
+                    }, 80);
+                } else if (state.activeTab === 'rephraser') {
+                    renderRephraserWorkspace(container);
+                    setTimeout(() => {
+                        renderMermaidInDom(document.getElementById('rephraser-output'));
+                    }, 80);
+                } else {
+                    renderAgentWorkspace(container);
+                    setTimeout(() => {
+                        renderMermaidInDom(document.getElementById('agent-output'));
+                    }, 80);
+                }
+            } catch (err) {
+                console.error("Error rendering workspace:", err);
+                container.innerHTML = `
+                    <div class="max-w-4xl mx-auto p-6 bg-rose-950/40 border border-rose-500/40 rounded-xl text-slate-200 space-y-3">
+                        <div class="flex items-center gap-2 text-rose-400 font-bold text-base">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Error Rendering Workspace
+                        </div>
+                        <p class="text-xs text-rose-300 font-mono">${escapeHtml(err.message)}</p>
+                        <button onclick="renderWorkspace()" class="text-xs bg-dark-700 hover:bg-dark-600 px-3 py-1.5 rounded-lg border border-dark-600">Retry</button>
+                    </div>
+                `;
             }
         }
 
@@ -2573,6 +2587,7 @@
             const activeWords = hasDoc 
                 ? (rep.fileWords || (rep.fileText ? rep.fileText.trim().split(/\s+/).length : 0))
                 : (rep.text ? rep.text.trim().split(/\s+/).length : 0);
+            const repWords = activeWords;
             const isRunning = rep.isRunning;
             const hasOutput = !!rep.output;
             const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
@@ -2957,7 +2972,7 @@
                             <!-- Live Audit Ratings -->
                             <div class="flex flex-wrap items-center gap-2 text-xs">
                                 <span class="bg-dark-800 border border-dark-700 text-slate-300 px-2.5 py-1 rounded-md flex items-center gap-1 font-mono text-[11px]" id="rep-stat-words">
-                                    <i class="fa-solid fa-chart-column text-indigo-400"></i> ${rep.stats.originalWords ? `${rep.stats.originalWords} ➔ ${rep.stats.rephrasedWords}w (${rep.stats.changePercent > 0 ? '+' : ''}${rep.stats.changePercent}%)` : `${repWords} words`}
+                                    <i class="fa-solid fa-chart-column text-indigo-400"></i> ${(rep.stats && rep.stats.originalWords) ? `${rep.stats.originalWords} ➔ ${rep.stats.rephrasedWords}w (${rep.stats.changePercent > 0 ? '+' : ''}${rep.stats.changePercent}%)` : `${activeWords.toLocaleString()} words`}
                                 </span>
                                 <span class="bg-dark-800 border border-emerald-500/30 text-accent-green px-2.5 py-1 rounded-md flex items-center gap-1 font-semibold text-[11px]">
                                     <i class="fa-solid fa-shield-check"></i> Turnitin Plag &lt; 15%
