@@ -641,11 +641,11 @@
         let state = {
             activeTab: 'ch1',
             data: {
-                ch1: { text: '', output: '', status: 'Pending', isRunning: false },
-                ch2: { text: '', output: '', status: 'Pending', isRunning: false },
-                ch3: { text: '', output: '', status: 'Pending', isRunning: false },
-                ch4: { text: '', output: '', status: 'Pending', isRunning: false },
-                ch5: { text: '', output: '', status: 'Pending', isRunning: false },
+                ch1: { text: '', fileText: '', pastedText: '', fileName: '', fileWords: 0, hasUploadedFile: false, output: '', status: 'Pending', isRunning: false },
+                ch2: { text: '', fileText: '', pastedText: '', fileName: '', fileWords: 0, hasUploadedFile: false, output: '', status: 'Pending', isRunning: false },
+                ch3: { text: '', fileText: '', pastedText: '', fileName: '', fileWords: 0, hasUploadedFile: false, output: '', status: 'Pending', isRunning: false },
+                ch4: { text: '', fileText: '', pastedText: '', fileName: '', fileWords: 0, hasUploadedFile: false, output: '', status: 'Pending', isRunning: false },
+                ch5: { text: '', fileText: '', pastedText: '', fileName: '', fileWords: 0, hasUploadedFile: false, output: '', status: 'Pending', isRunning: false },
                 coherence: { 
                     text: '', 
                     output: '', 
@@ -657,7 +657,11 @@
                 tribunal: { output: '', status: 'Pending', isRunning: false },
                 correction: {
                     text: '',
+                    fileText: '',
+                    pastedText: '',
                     fileName: '',
+                    fileWords: 0,
+                    hasUploadedFile: false,
                     output: '',
                     parsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' },
                     status: 'Pending',
@@ -671,7 +675,11 @@
                 },
                 rephraser: {
                     text: '',
+                    fileText: '',
+                    pastedText: '',
                     fileName: '',
+                    fileWords: 0,
+                    hasUploadedFile: false,
                     output: '',
                     lengthMode: 'exact', // 'less50', 'exact', 'more100', 'more300', 'more1000', 'custom'
                     customPercent: 0,
@@ -761,6 +769,9 @@
                     });
                 }
 
+                // Deep sanitize: purge all XML, RTF, HTML, PDF operators, and binary artifacts
+                extractedText = cleanHumanAcademicText(extractedText);
+
                 if (!extractedText || !extractedText.trim()) {
                     throw new Error("No readable text could be extracted from this document.");
                 }
@@ -768,43 +779,25 @@
                 if (!state.data[agentId]) {
                     state.data[agentId] = { text: '' };
                 }
-                state.data[agentId].text = extractedText;
 
-                if (agentId === 'correction') {
-                    state.data.correction.fileName = filename;
-                    const fnEl = document.getElementById('correction-file-badge');
-                    if (fnEl) {
-                        fnEl.textContent = filename;
-                        fnEl.classList.remove('hidden');
-                    }
-                } else if (agentId === 'rephraser') {
-                    state.data.rephraser.fileName = filename;
-                    const fnEl = document.getElementById('rephraser-file-badge');
-                    if (fnEl) {
-                        fnEl.innerHTML = `<i class="fa-solid fa-file-lines text-xs text-indigo-400"></i> ${filename}`;
-                        fnEl.classList.remove('hidden');
-                    }
-                }
                 const words = extractedText.trim().split(/\s+/).length;
-                
-                // Update textarea and counter
-                let textareaId = 'chap-textarea';
-                if (agentId === 'correction') textareaId = 'correction-textarea';
-                else if (agentId === 'rephraser') textareaId = 'rephraser-textarea';
-                const textarea = document.getElementById(textareaId);
-                if (textarea) textarea.value = extractedText;
 
-                let wordElId = 'word-count';
-                if (agentId === 'correction') wordElId = 'correction-word-count';
-                else if (agentId === 'rephraser') wordElId = 'rephraser-word-count';
-                const wordEl = document.getElementById(wordElId);
-                if (wordEl) wordEl.textContent = `${words.toLocaleString()} words`;
+                // Safely store in memory without dumping into the paste area
+                state.data[agentId].fileText = extractedText;
+                state.data[agentId].fileName = filename;
+                state.data[agentId].fileWords = words;
+                state.data[agentId].hasUploadedFile = true;
+
+                // CRITICAL FIX: DO NOT DUMP OR EXTRACT CONTENT INTO THE PASTE AREA TEXTAREA!
+                // Dumping content into the textarea causes truncation, browser freezing,
+                // and exposes raw coding. Instead, keep the document in memory and refresh the UI.
+                renderWorkspace();
 
                 if (agentId === 'rephraser' && typeof updateRephraserTargetEstimate === 'function') {
                     updateRephraserTargetEstimate(words);
                 }
 
-                showToast(`Extracted <strong>${words.toLocaleString()} words</strong> from ${filename}!`, 'success');
+                showToast(`Loaded <strong>${filename}</strong> (${words.toLocaleString()} words) into memory! Paste area protected.`, 'success');
             } catch(err) {
                 console.error("Document extraction error:", err);
                 showToast(`Failed to parse ${filename}: ${err.message}`, 'error');
@@ -814,6 +807,147 @@
                 const input = document.getElementById(`file-input-${agentId}`);
                 if (input) input.value = '';
             }
+        }
+
+        // ==========================================
+        // TEXT SANITIZATION & ZERO-CODE PURIFIER
+        // ==========================================
+
+        function cleanHumanAcademicText(raw) {
+            if (!raw) return '';
+            let text = String(raw);
+
+            // 1. Strip XML declarations, doctypes, and comments
+            text = text.replace(/<\?xml[^>]*\?>/gi, ' ');
+            text = text.replace(/<!DOCTYPE[^>]*>/gi, ' ');
+            text = text.replace(/<!--[\s\S]*?-->/g, ' ');
+
+            // 2. If raw Word OpenXML markup was passed, extract <w:t> inner text and convert paragraph ends to newlines
+            if (text.includes('<w:t') || text.includes('xmlns:w=')) {
+                text = text.replace(/<\/w:p>/gi, '\n\n');
+                text = text.replace(/<\/w:tr>/gi, '\n');
+                const wtMatches = [];
+                const wtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
+                let match;
+                while ((match = wtRegex.exec(text)) !== null) {
+                    wtMatches.push(match[1]);
+                }
+                if (wtMatches.length > 0) {
+                    text = wtMatches.join(' ');
+                }
+            }
+
+            // 3. Strip all HTML/XML tags
+            text = text.replace(/<[^>]+>/g, ' ');
+
+            // 4. Strip RTF commands and control groups
+            text = text.replace(/\\rtf[0-9]*\b[^\\]*/gi, ' ');
+            text = text.replace(/\\(fonttbl|colortbl|stylesheet|info|generator)[^{]*\{[^}]*\}/gi, ' ');
+            text = text.replace(/\\[a-zA-Z]+[0-9\-]* ?/g, ' ');
+            text = text.replace(/[{}]/g, ' ');
+
+            // 5. Strip PDF operators and stream artifacts
+            text = text.replace(/%PDF-[0-9.]+/gi, ' ');
+            text = text.replace(/\b(?:endstream|endobj|xref|trailer|startxref|stream)\b/gi, ' ');
+            text = text.replace(/\b[0-9]+\s+[0-9]+\s+obj\b/gi, ' ');
+            text = text.replace(/\/F\d+\b|\b\d+\s+Tf\b|\bTj\b|\bTJ\b|\b[0-9.-]+\s+[0-9.-]+\s+T[dm]\b/gi, ' ');
+            text = text.replace(/\/(?:Type|Font|Subtype|Length|Filter|Widths|FirstChar|LastChar|FontDescriptor|ProcSet|Resources|MediaBox|CropBox)[^ \n\r>]+/gi, ' ');
+            text = text.replace(/\[\s*\/PDF\s*\/Text[^\]]*\]/gi, ' ');
+            text = text.replace(/[<>]/g, ' ');
+
+            // 6. Strip internal ZIP/OLE file path headers
+            text = text.replace(/word\/(?:document|fontTable|styles|settings|webSettings|numbering)\.xml/gi, ' ');
+            text = text.replace(/\[Content_Types\]\.xml|_rels\/\.rels/gi, ' ');
+            text = text.replace(/CompObj|SummaryInformation|DocumentSummaryInformation|WordDocument|Normal\.dotm/gi, ' ');
+
+            // 7. Decode HTML entities
+            text = text
+                .replace(/&nbsp;/gi, ' ')
+                .replace(/&amp;/gi, '&')
+                .replace(/&lt;/gi, '<')
+                .replace(/&gt;/gi, '>')
+                .replace(/&quot;/gi, '"')
+                .replace(/&#39;/gi, "'")
+                .replace(/&#x27;/gi, "'");
+
+            // 8. Remove non-printable control characters (keep \n and \t)
+            text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ');
+
+            // 9. Normalize multiple blank lines and spaces
+            text = text.replace(/[ \t]+/g, ' ');
+            text = text.replace(/\n\s*\n\s*\n+/g, '\n\n');
+
+            return text.trim();
+        }
+
+        function getPreviewSnippet(text) {
+            if (!text) return 'No text loaded.';
+            const clean = cleanHumanAcademicText(text);
+            const words = clean.split(/\s+/);
+            if (words.length <= 150) return clean;
+            return words.slice(0, 150).join(' ') + '... [Full document loaded in memory]';
+        }
+
+        function toggleCleanPreview(agentId) {
+            const box = document.getElementById(`${agentId}-preview-box`);
+            const btnText = document.getElementById(`${agentId}-preview-btn-text`);
+            if (!box) return;
+            if (box.classList.contains('hidden')) {
+                box.classList.remove('hidden');
+                if (btnText) btnText.textContent = "Hide Preview";
+            } else {
+                box.classList.add('hidden');
+                if (btnText) btnText.textContent = "Preview Excerpt";
+            }
+        }
+
+        function removeUploadedFile(agentId) {
+            if (agentId === 'rephraser') {
+                const rep = state.data.rephraser;
+                rep.hasUploadedFile = false;
+                rep.fileText = '';
+                rep.fileName = '';
+                rep.fileWords = 0;
+                rep.text = rep.pastedText || '';
+                renderWorkspace();
+                const words = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+                updateRephraserTargetEstimate(words);
+                showToast("Uploaded document removed. Paste area is now active.", "info");
+            } else if (agentId === 'correction') {
+                const corr = state.data.correction;
+                corr.hasUploadedFile = false;
+                corr.fileText = '';
+                corr.fileName = '';
+                corr.fileWords = 0;
+                corr.text = corr.pastedText || '';
+                renderWorkspace();
+                showToast("Correction document removed. Paste area is now active.", "info");
+            } else {
+                // Chapters
+                if (state.data[agentId]) {
+                    state.data[agentId].hasUploadedFile = false;
+                    state.data[agentId].fileText = '';
+                    state.data[agentId].fileName = '';
+                    state.data[agentId].fileWords = 0;
+                    state.data[agentId].text = state.data[agentId].pastedText || '';
+                    renderWorkspace();
+                    showToast("Chapter document removed. Paste area is now active.", "info");
+                }
+            }
+        }
+
+        function getActiveChapterText(chapId) {
+            const d = state.data[chapId];
+            if (!d) return '';
+            return (d.hasUploadedFile && d.fileText) ? d.fileText.trim() : (d.pastedText || d.text || '').trim();
+        }
+
+        function getActiveChapterWords(chapId) {
+            const d = state.data[chapId];
+            if (!d) return 0;
+            if (d.hasUploadedFile && d.fileWords) return d.fileWords;
+            const txt = getActiveChapterText(chapId);
+            return txt ? txt.split(/\s+/).filter(Boolean).length : 0;
         }
 
         async function extractTextFromPDF(file, statusText) {
@@ -863,7 +997,7 @@
 
                     const extracted = fullText.join('\n\n').trim();
                     if (extracted.length > 20) {
-                        return extracted;
+                        return cleanHumanAcademicText(extracted);
                     }
                 } catch (pdfErr) {
                     console.warn("PDF.js worker/canvas extraction failed, engaging direct stream fallback:", pdfErr);
@@ -873,7 +1007,7 @@
             // Tier 2: Stream fallback for protected or headless PDF streams
             const streamText = extractTextFromPDFStreams(arrayBuffer);
             if (streamText && streamText.length > 20) {
-                return streamText;
+                return cleanHumanAcademicText(streamText);
             }
 
             throw new Error("Unable to extract text from PDF. The document might be image-only (scanned), encrypted, or empty.");
@@ -887,7 +1021,7 @@
                 try {
                     const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
                     if (result && result.value && result.value.trim().length > 20) {
-                        return result.value.trim();
+                        return cleanHumanAcademicText(result.value.trim());
                     }
                 } catch (err) {
                     console.warn("mammoth.extractRawText failed, trying convertToMarkdown:", err);
@@ -897,7 +1031,7 @@
                 try {
                     const mdResult = await mammoth.convertToMarkdown({ arrayBuffer: arrayBuffer });
                     if (mdResult && mdResult.value && mdResult.value.trim().length > 20) {
-                        return mdResult.value.trim();
+                        return cleanHumanAcademicText(mdResult.value.trim());
                     }
                 } catch (err) {
                     console.warn("mammoth.convertToMarkdown failed:", err);
@@ -907,7 +1041,7 @@
             // Tier 3: Binary extraction fallback (e.g. if a .doc file was saved with .docx extension)
             const fallbackText = extractTextFromBinaryDoc(arrayBuffer);
             if (fallbackText && fallbackText.trim().length > 20) {
-                return fallbackText.trim();
+                return cleanHumanAcademicText(fallbackText.trim());
             }
 
             throw new Error("No readable text could be extracted from this Word (.docx) document. Ensure the document is not password protected.");
@@ -921,7 +1055,7 @@
                 try {
                     const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
                     if (result && result.value && result.value.trim().length > 20) {
-                        return result.value.trim();
+                        return cleanHumanAcademicText(result.value.trim());
                     }
                 } catch (err) {}
             }
@@ -929,7 +1063,7 @@
             // Tier 2: Dual-Mode UTF-16LE + ASCII + RTF binary scanner
             const text = extractTextFromBinaryDoc(arrayBuffer);
             if (text && text.trim().length > 20) {
-                return text.trim();
+                return cleanHumanAcademicText(text.trim());
             }
 
             throw new Error("Legacy binary .doc file could not be parsed cleanly. Please save as .docx or .pdf for best results.");
@@ -948,12 +1082,12 @@
             if (rtfHeader.startsWith('{\\rtf')) {
                 let rtfText = '';
                 for (let i = 0; i < bytes.length; i++) rtfText += String.fromCharCode(bytes[i]);
-                return rtfText
+                return cleanHumanAcademicText(rtfText
                     .replace(/\\par[d]?\b/g, '\n')
                     .replace(/\\tab\b/g, '\t')
                     .replace(/\\[a-zA-Z0-9\-]+ ?/g, '')
                     .replace(/[{}]/g, '')
-                    .trim();
+                    .trim());
             }
 
             // Word 97-2004 binary format stores text in UTF-16LE (2 bytes per character: char + 0x00)
@@ -1001,10 +1135,10 @@
             const asciiTotal = asciiStrings.join(' ');
 
             const best = utf16Total.length >= asciiTotal.length ? utf16Total : asciiTotal;
-            return best
+            return cleanHumanAcademicText(best
                 .replace(/CompObj|SummaryInformation|DocumentSummaryInformation|WordDocument|Normal\.dotm|Microsoft Word Document/gi, ' ')
                 .replace(/\s+/g, ' ')
-                .trim();
+                .trim());
         }
 
         function extractTextFromPDFStreams(buffer) {
@@ -1046,7 +1180,7 @@
                 }
             }
 
-            return textBlocks.join('\n\n').replace(/\s+/g, ' ').trim();
+            return cleanHumanAcademicText(textBlocks.join('\n\n').replace(/\s+/g, ' ').trim());
         }
 
         // ==========================================
@@ -1595,7 +1729,8 @@
             const agent = systemAgents.find(a => a.id === state.activeTab);
             const data = state.data[agent.id];
             const isRunning = data.isRunning;
-            const wordCount = data.text ? data.text.trim().split(/\s+/).length : 0;
+            const hasDoc = !!data.hasUploadedFile;
+            const activeWords = getActiveChapterWords(agent.id);
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -1630,7 +1765,7 @@
                          ondragleave="handleDragLeave(event)" 
                          ondrop="handleFileDrop(event, '${agent.id}')"
                          onclick="document.getElementById('file-input-${agent.id}').click()"
-                         class="bg-dark-800 border-2 border-dashed border-dark-600 rounded-xl p-6 flex flex-col items-center justify-center hover:border-accent-purple transition-all relative group cursor-pointer shadow-md">
+                         class="border-2 border-dashed ${hasDoc ? 'border-dark-700 bg-dark-900/30' : 'border-dark-600 hover:border-accent-purple bg-dark-800'} rounded-xl p-6 flex flex-col items-center justify-center transition-all relative group cursor-pointer shadow-md">
                         
                         <!-- Idle State -->
                         <div id="upload-idle-${agent.id}" class="flex flex-col items-center text-center pointer-events-none">
@@ -1638,7 +1773,7 @@
                                 <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
                             </div>
                             <p class="text-sm font-semibold text-slate-200 mb-1">
-                                Drop Chapter Document Here, or <span class="text-accent-teal hover:underline font-bold">Browse</span>
+                                ${hasDoc ? `Drop a new document here to replace <span class="text-accent-teal font-bold">${escapeHtml(data.fileName || 'file')}</span>` : 'Drop Chapter Document Here, or <span class="text-accent-teal hover:underline font-bold">Browse</span>'}
                             </p>
                             <div class="flex flex-wrap items-center justify-center gap-2 mt-2">
                                 <span class="px-2.5 py-1 rounded-md text-[11px] bg-rose-500/10 text-rose-400 font-semibold border border-rose-500/20 flex items-center gap-1.5">
@@ -1652,7 +1787,7 @@
                                 </span>
                             </div>
                             <p class="text-[11px] text-slate-500 mt-2.5 flex items-center gap-1">
-                                <i class="fa-solid fa-lock text-accent-green"></i> 100% Client-Side Privacy Extraction &bull; Instant Text Processing
+                                <i class="fa-solid fa-lock text-accent-green"></i> 100% Client-Side Privacy Extraction &bull; Instant Text Processing &bull; Zero Code Artifacts
                             </p>
                         </div>
 
@@ -1664,13 +1799,58 @@
                         </div>
                     </div>
 
-                    <!-- Text Area -->
-                    <div class="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden shadow-lg focus-within:border-accent-blue focus-within:ring-1 focus-within:ring-accent-blue">
-                        <div class="bg-dark-700/50 px-4 py-2 border-b border-dark-700 flex justify-between items-center">
-                            <span class="text-xs font-medium text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-keyboard mr-1"></i> Chapter Text</span>
-                            <span class="text-xs text-slate-500" id="word-count">${wordCount} words</span>
+                    <!-- Active Uploaded Document Card (shown when file is loaded in memory) -->
+                    ${hasDoc ? `
+                    <div id="chap-file-card-${agent.id}" class="bg-gradient-to-r from-purple-950/70 via-dark-850 to-dark-800 border border-purple-500/50 rounded-xl p-4 shadow-xl">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-11 h-11 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center text-xl shrink-0 border border-purple-500/30">
+                                    <i class="fa-solid fa-file-contract"></i>
+                                </div>
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="text-xs font-bold text-white tracking-wide">${escapeHtml(data.fileName || (agent.title + ' Document'))}</span>
+                                        <span class="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-semibold border border-purple-500/30">
+                                            ${activeWords.toLocaleString()} words loaded
+                                        </span>
+                                        <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30 flex items-center gap-1">
+                                            <i class="fa-solid fa-circle-check text-[9px]"></i> Memory Ready (Paste Area Protected)
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-1">
+                                        Document safely held in memory with zero code artifacts. ${agent.title} will review this chapter directly without paste-area truncation.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                <button onclick="toggleCleanPreview('${agent.id}')" class="text-xs bg-dark-700 hover:bg-dark-600 text-purple-300 hover:text-white px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5 shadow-sm" title="Preview clean excerpt">
+                                    <i class="fa-solid fa-eye"></i> <span id="${agent.id}-preview-btn-text">Preview Excerpt</span>
+                                </button>
+                                <button onclick="removeUploadedFile('${agent.id}')" class="text-xs bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 px-3 py-1.5 rounded-lg border border-rose-800/40 transition-colors flex items-center gap-1.5 shadow-sm" title="Remove file and switch back to paste area">
+                                    <i class="fa-solid fa-trash-can"></i> Remove File
+                                </button>
+                            </div>
                         </div>
-                        <textarea id="chap-textarea" class="w-full h-64 bg-transparent p-5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none resize-y" placeholder="Paste text here, or upload your PDF/Word document above..." oninput="handleTextChange('${agent.id}', this.value)"></textarea>
+                        
+                        <!-- Collapsible Clean Preview Box -->
+                        <div id="${agent.id}-preview-box" class="hidden mt-3 pt-3 border-t border-dark-700/80">
+                            <div class="text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                                <i class="fa-solid fa-align-left text-purple-400"></i> Clean Human Academic Excerpt (First 150 Words - Zero Code):
+                            </div>
+                            <div class="bg-dark-900/90 rounded-lg p-3 text-xs text-slate-300 font-serif leading-relaxed border border-dark-750 max-h-36 overflow-y-auto">
+                                ${escapeHtml(getPreviewSnippet(data.fileText || data.text))}
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- Text Area (Protected against code pollution & truncation when document is uploaded) -->
+                    <div class="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden shadow-lg focus-within:border-accent-blue focus-within:ring-1 focus-within:ring-accent-blue ${hasDoc ? 'opacity-40' : ''}">
+                        <div class="bg-dark-700/50 px-4 py-2 border-b border-dark-700 flex justify-between items-center">
+                            <span class="text-xs font-medium text-slate-300 uppercase tracking-wider"><i class="fa-solid fa-keyboard mr-1"></i> Chapter Text ${hasDoc ? '(Bypassed - Uploaded Document Active)' : ''}</span>
+                            <span class="text-xs text-slate-500" id="word-count">${activeWords.toLocaleString()} words</span>
+                        </div>
+                        <textarea id="chap-textarea" ${hasDoc ? 'disabled' : ''} class="w-full h-64 bg-transparent p-5 text-sm ${hasDoc ? 'text-slate-500 bg-dark-900/30 cursor-not-allowed' : 'text-slate-200'} placeholder-slate-500 focus:outline-none resize-y" placeholder="${hasDoc ? `Document '${escapeHtml(data.fileName)}' (${activeWords.toLocaleString()} words) is active in memory. Click 'Remove File' above to use this paste area.` : 'Paste text here, or upload your PDF/Word document above...'}" oninput="handleTextChange('${agent.id}', this.value)"></textarea>
                     </div>
 
                     <div class="flex flex-wrap gap-3 justify-between items-center">
@@ -1710,7 +1890,10 @@
                 </div>
             `;
             container.innerHTML = html;
-            document.getElementById('chap-textarea').value = data.text;
+            const chapTextarea = document.getElementById('chap-textarea');
+            if (chapTextarea) {
+                chapTextarea.value = hasDoc ? '' : (data.pastedText || data.text || '');
+            }
         }
 
         function renderTribunalWorkspace(container) {
@@ -1792,7 +1975,10 @@
 
         function renderCorrectionWorkspace(container) {
             const corr = state.data.correction;
-            const corrWords = corr.text ? corr.text.trim().split(/\s+/).length : 0;
+            const hasCorrDoc = !!corr.hasUploadedFile;
+            const corrWords = hasCorrDoc 
+                ? (corr.fileWords || (corr.fileText ? corr.fileText.trim().split(/\s+/).length : 0))
+                : (corr.text ? corr.text.trim().split(/\s+/).length : 0);
             const isAgent6Running = corr.isRunning;
             const isAgent7Running = corr.agent7Running;
             const isAnyRunning = isAgent6Running || isAgent7Running;
@@ -1804,11 +1990,11 @@
 
             // Check loaded draft chapters in studio
             const chWords = {
-                ch1: state.data.ch1.text ? state.data.ch1.text.trim().split(/\s+/).length : 0,
-                ch2: state.data.ch2.text ? state.data.ch2.text.trim().split(/\s+/).length : 0,
-                ch3: state.data.ch3.text ? state.data.ch3.text.trim().split(/\s+/).length : 0,
-                ch4: state.data.ch4.text ? state.data.ch4.text.trim().split(/\s+/).length : 0,
-                ch5: state.data.ch5.text ? state.data.ch5.text.trim().split(/\s+/).length : 0
+                ch1: getActiveChapterWords('ch1'),
+                ch2: getActiveChapterWords('ch2'),
+                ch3: getActiveChapterWords('ch3'),
+                ch4: getActiveChapterWords('ch4'),
+                ch5: getActiveChapterWords('ch5')
             };
 
             // Active stage parsed chapters
@@ -2026,23 +2212,65 @@
                             </div>
                         </div>
 
+                        <!-- Active Uploaded Document Card (shown when file is loaded in memory) -->
+                        ${hasCorrDoc ? `
+                        <div id="correction-file-card" class="bg-gradient-to-r from-teal-950/70 via-dark-850 to-dark-800 border border-teal-500/50 rounded-xl p-4 shadow-xl">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-11 h-11 rounded-xl bg-teal-500/20 text-teal-300 flex items-center justify-center text-xl shrink-0 border border-teal-500/30">
+                                        <i class="fa-solid fa-file-contract"></i>
+                                    </div>
+                                    <div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="text-xs font-bold text-white tracking-wide">${escapeHtml(corr.fileName || 'Correction Report')}</span>
+                                            <span class="text-[10px] bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full font-semibold border border-teal-500/30">
+                                                ${corrWords.toLocaleString()} words loaded
+                                            </span>
+                                            <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30 flex items-center gap-1">
+                                                <i class="fa-solid fa-circle-check text-[9px]"></i> Memory Ready (Paste Area Protected)
+                                            </span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-1">
+                                            Document safely held in memory with zero code artifacts. Agent 6 & 7 will reconstruct chapters directly from this file without paste-area truncation.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                    <button onclick="toggleCleanPreview('correction')" class="text-xs bg-dark-700 hover:bg-dark-600 text-teal-300 hover:text-white px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5 shadow-sm">
+                                        <i class="fa-solid fa-eye"></i> <span id="correction-preview-btn-text">Preview Excerpt</span>
+                                    </button>
+                                    <button onclick="removeUploadedFile('correction')" class="text-xs bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 px-3 py-1.5 rounded-lg border border-rose-800/40 transition-colors flex items-center gap-1.5 shadow-sm">
+                                        <i class="fa-solid fa-trash-can"></i> Remove File
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Collapsible Clean Preview Box -->
+                            <div id="correction-preview-box" class="hidden mt-3 pt-3 border-t border-dark-700/80">
+                                <div class="text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-align-left text-teal-400"></i> Clean Examiner Critique Excerpt (First 150 Words - Zero Code):
+                                </div>
+                                <div class="bg-dark-900/90 rounded-lg p-3 text-xs text-slate-300 font-serif leading-relaxed border border-dark-750 max-h-36 overflow-y-auto">
+                                    ${escapeHtml(getPreviewSnippet(corr.fileText || corr.text))}
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+
                         <!-- Editable Textarea for Correction Instructions -->
-                        <div>
+                        <div class="relative ${hasCorrDoc ? 'opacity-40 pointer-events-none' : ''}">
                             <div class="flex items-center justify-between mb-1.5">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-xs font-medium text-slate-300">Correction Content & Instructions:</span>
-                                    ${corr.fileName ? `
-                                    <span id="correction-file-badge" class="text-[11px] px-2 py-0.5 rounded bg-dark-700 text-teal-300 border border-teal-500/30 flex items-center gap-1">
-                                        <i class="fa-solid fa-file-lines"></i> ${corr.fileName}
-                                    </span>` : ''}
+                                    <span class="text-xs font-medium text-slate-300">Correction Content & Instructions ${hasCorrDoc ? '(Bypassed - File active above)' : '(Manual Paste Area)'}:</span>
                                 </div>
                                 <span class="text-xs text-slate-500" id="correction-word-count">${corrWords.toLocaleString()} words</span>
                             </div>
                             <textarea id="correction-textarea" 
-                                      rows="5" 
+                                      rows="4" 
+                                      ${hasCorrDoc ? 'disabled' : ''}
                                       oninput="handleCorrectionTextChange(this.value)" 
-                                      placeholder="Upload your correction report above or paste the examiner's comments / viva critique directly here..."
-                                      class="w-full bg-dark-900 border border-dark-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-accent-teal transition-all font-mono placeholder:text-slate-600 resize-y leading-relaxed">${corr.text}</textarea>
+                                      placeholder="${hasCorrDoc ? `Correction document '${corr.fileName}' (${corrWords.toLocaleString()} words) is active in memory. Click 'Remove File' above to use this paste area.` : 'Upload your correction report above or paste the examiner\'s comments / viva critique directly here...'}"
+                                      class="w-full bg-dark-900 border border-dark-700 rounded-xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-accent-teal transition-all font-mono placeholder:text-slate-600 resize-y leading-relaxed">${hasCorrDoc ? '' : (corr.pastedText || corr.text || '')}</textarea>
                         </div>
                     </div>
 
@@ -2311,13 +2539,12 @@
 
         function clearCorrectionInput() {
             state.data.correction.text = '';
+            state.data.correction.fileText = '';
+            state.data.correction.pastedText = '';
             state.data.correction.fileName = '';
-            const ta = document.getElementById('correction-textarea');
-            if (ta) ta.value = '';
-            const wc = document.getElementById('correction-word-count');
-            if (wc) wc.textContent = '0 words';
-            const badge = document.getElementById('correction-file-badge');
-            if (badge) badge.classList.add('hidden');
+            state.data.correction.fileWords = 0;
+            state.data.correction.hasUploadedFile = false;
+            renderWorkspace();
             showToast('Correction input cleared.', 'info');
         }
 
@@ -2342,13 +2569,16 @@
 
         function renderRephraserWorkspace(container) {
             const rep = state.data.rephraser;
-            const repWords = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+            const hasDoc = !!rep.hasUploadedFile;
+            const activeWords = hasDoc 
+                ? (rep.fileWords || (rep.fileText ? rep.fileText.trim().split(/\s+/).length : 0))
+                : (rep.text ? rep.text.trim().split(/\s+/).length : 0);
             const isRunning = rep.isRunning;
             const hasOutput = !!rep.output;
             const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
 
             // Target word estimation calculation
-            const targetEstimateText = getRephraserTargetEstimate(repWords, customPercent);
+            const targetEstimateText = getRephraserTargetEstimate(activeWords, customPercent);
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -2383,7 +2613,7 @@
                                 <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">1</span>
                                 <h4 class="text-sm font-bold text-white uppercase tracking-wider">Input Document or Paste Manuscript</h4>
                                 <span id="rephraser-file-badge" class="${rep.fileName ? '' : 'hidden'} text-[11px] bg-indigo-900/50 border border-indigo-500/40 text-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                    <i class="fa-solid fa-file-lines text-xs text-indigo-400"></i> ${rep.fileName}
+                                    <i class="fa-solid fa-file-lines text-xs text-indigo-400"></i> ${escapeHtml(rep.fileName)}
                                 </span>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
@@ -2432,9 +2662,54 @@
                                onclick="event.stopPropagation()"
                                onchange="handleFileInputChange(event, 'rephraser')">
 
+                        <!-- Active Uploaded Document Card (shown when file is loaded in memory) -->
+                        ${hasDoc ? `
+                        <div id="rephraser-file-card" class="bg-gradient-to-r from-indigo-950/70 via-dark-850 to-dark-800 border border-indigo-500/50 rounded-xl p-4 shadow-xl">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-11 h-11 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xl shrink-0 border border-indigo-500/30">
+                                        <i class="fa-solid fa-file-contract"></i>
+                                    </div>
+                                    <div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span class="text-xs font-bold text-white tracking-wide">${escapeHtml(rep.fileName || 'Uploaded Manuscript')}</span>
+                                            <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-semibold border border-indigo-500/30">
+                                                ${activeWords.toLocaleString()} words loaded
+                                            </span>
+                                            <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-semibold border border-emerald-500/30 flex items-center gap-1">
+                                                <i class="fa-solid fa-circle-check text-[9px]"></i> Memory Ready (Paste Area Protected)
+                                            </span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-1">
+                                            Document safely held in memory with zero code artifacts. The Rephraser will transform this document directly without paste-area truncation.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 self-end sm:self-center shrink-0">
+                                    <button onclick="toggleCleanPreview('rephraser')" class="text-xs bg-dark-700 hover:bg-dark-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5 shadow-sm" title="Preview clean excerpt">
+                                        <i class="fa-solid fa-eye"></i> <span id="rephraser-preview-btn-text">Preview Excerpt</span>
+                                    </button>
+                                    <button onclick="removeUploadedFile('rephraser')" class="text-xs bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 px-3 py-1.5 rounded-lg border border-rose-800/40 transition-colors flex items-center gap-1.5 shadow-sm" title="Remove file and switch back to paste area">
+                                        <i class="fa-solid fa-trash-can"></i> Remove File
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Collapsible Clean Preview Box -->
+                            <div id="rephraser-preview-box" class="hidden mt-3 pt-3 border-t border-dark-700/80">
+                                <div class="text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-align-left text-indigo-400"></i> Clean Human Academic Excerpt (First 150 Words - Zero Code):
+                                </div>
+                                <div class="bg-dark-900/90 rounded-lg p-3 text-xs text-slate-300 font-serif leading-relaxed border border-dark-750 max-h-36 overflow-y-auto">
+                                    ${escapeHtml(getPreviewSnippet(rep.fileText || rep.text))}
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+
                         <!-- Dropzone for DOCX, DOC, MD, PDF, TXT -->
                         <div id="dropzone-rephraser" 
-                             class="border-2 border-dashed border-dark-600 hover:border-indigo-500 rounded-xl p-4 bg-dark-900/50 hover:bg-dark-900/90 transition-all cursor-pointer text-center relative group"
+                             class="border-2 border-dashed ${hasDoc ? 'border-dark-700 bg-dark-900/30' : 'border-dark-600 hover:border-indigo-500 bg-dark-900/50 hover:bg-dark-900/90'} rounded-xl p-4 transition-all cursor-pointer text-center relative group"
                              ondragover="handleDragOver(event)"
                              ondragleave="handleDragLeave(event)"
                              ondrop="handleFileDrop(event, 'rephraser')"
@@ -2445,7 +2720,7 @@
                                     <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
                                 </div>
                                 <div class="text-left">
-                                    <span class="text-xs font-semibold text-slate-200 block">Click to upload or drag & drop manuscript file</span>
+                                    <span class="text-xs font-semibold text-slate-200 block">${hasDoc ? 'Upload a different file (Replaces current document in memory)' : 'Click to upload or drag & drop manuscript file'}</span>
                                     <span class="text-[11px] text-slate-500">Supports Word (.docx, .doc), Markdown (.md), PDF, and Plain Text (.txt)</span>
                                 </div>
                             </div>
@@ -2456,17 +2731,19 @@
                             </div>
                         </div>
 
-                        <!-- Textarea -->
-                        <div class="relative">
-                            <textarea id="rephraser-textarea" 
-                                      class="w-full h-44 bg-dark-900 border border-dark-700 rounded-xl p-4 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500/60 leading-relaxed placeholder:text-slate-600 resize-y" 
-                                      placeholder="Paste your thesis chapter, section, or literature draft here to rephrase with length modulation and Turnitin humanization..."
-                                      oninput="handleRephraserTextChange(this.value)">${rep.text}</textarea>
-                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
-                                <span class="text-[11px] font-mono text-slate-400 bg-dark-800/90 px-2 py-0.5 rounded border border-dark-700 shadow-sm" id="rephraser-word-count">
-                                    ${repWords.toLocaleString()} words
+                        <!-- Manual Paste Area (Protected & Untruncated) -->
+                        <div class="relative ${hasDoc ? 'opacity-40 pointer-events-none' : ''}">
+                            <div class="flex items-center justify-between mb-1.5 text-xs text-slate-400">
+                                <span><i class="fa-solid fa-paste text-indigo-400 mr-1"></i> Manual Paste Area ${hasDoc ? '(Bypassed - Uploaded file active above)' : '(Used when no file uploaded)'}:</span>
+                                <span class="text-[11px] font-mono text-slate-400" id="rephraser-word-count">
+                                    ${activeWords.toLocaleString()} words
                                 </span>
                             </div>
+                            <textarea id="rephraser-textarea" 
+                                      class="w-full h-36 bg-dark-900 border border-dark-700 rounded-xl p-4 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500/60 leading-relaxed placeholder:text-slate-600 resize-y" 
+                                      placeholder="${hasDoc ? `Uploaded document '${rep.fileName}' (${activeWords.toLocaleString()} words) is active in memory. Click 'Remove File' above to use this paste area.` : 'Paste your thesis chapter, section, or literature draft here to rephrase with length modulation and Turnitin humanization...'}"
+                                      ${hasDoc ? 'disabled' : ''}
+                                      oninput="handleRephraserTextChange(this.value)">${hasDoc ? '' : (rep.pastedText || rep.text || '')}</textarea>
                         </div>
                     </div>
 
@@ -2884,13 +3161,12 @@
 
         function clearRephraserInput() {
             state.data.rephraser.text = '';
+            state.data.rephraser.fileText = '';
+            state.data.rephraser.pastedText = '';
             state.data.rephraser.fileName = '';
-            const ta = document.getElementById('rephraser-textarea');
-            if (ta) ta.value = '';
-            const wc = document.getElementById('rephraser-word-count');
-            if (wc) wc.textContent = '0 words';
-            const badge = document.getElementById('rephraser-file-badge');
-            if (badge) badge.classList.add('hidden');
+            state.data.rephraser.fileWords = 0;
+            state.data.rephraser.hasUploadedFile = false;
+            renderWorkspace();
             updateRephraserTargetEstimate(0);
             showToast('Rephraser input cleared.', 'info');
         }
@@ -2913,20 +3189,15 @@ This disconnect establishes the central empirical problem of this investigation.
 `;
 
             state.data.rephraser.text = sample;
+            state.data.rephraser.pastedText = sample;
+            state.data.rephraser.fileText = '';
+            state.data.rephraser.fileWords = 0;
+            state.data.rephraser.hasUploadedFile = false;
             state.data.rephraser.fileName = 'Sample_Chapter1_Draft.txt';
-            const ta = document.getElementById('rephraser-textarea');
-            if (ta) ta.value = sample;
             const words = sample.trim().split(/\s+/).length;
-            const wc = document.getElementById('rephraser-word-count');
-            if (wc) wc.textContent = `${words.toLocaleString()} words`;
-            const badge = document.getElementById('rephraser-file-badge');
-            if (badge) {
-                badge.textContent = 'Sample_Chapter1_Draft.txt';
-                badge.classList.remove('hidden');
-            }
+            renderWorkspace();
             updateRephraserTargetEstimate(words);
             showToast('Loaded sample manuscript draft into Rephraser!', 'info');
-            renderWorkspace();
         }
 
         function importFromStudioToRephraser(sourceId) {
@@ -2936,7 +3207,7 @@ This disconnect establishes the central empirical problem of this investigation.
                 textToImport = state.data.correction.agent7Output || state.data.correction.output || '';
                 label = 'Agent 7 Final Output';
             } else {
-                textToImport = state.data[sourceId]?.text || '';
+                textToImport = state.data[sourceId]?.fileText || state.data[sourceId]?.pastedText || state.data[sourceId]?.text || '';
                 label = sourceId.toUpperCase();
             }
 
@@ -2946,10 +3217,15 @@ This disconnect establishes the central empirical problem of this investigation.
             }
 
             state.data.rephraser.text = textToImport;
+            state.data.rephraser.pastedText = textToImport;
+            state.data.rephraser.fileText = '';
+            state.data.rephraser.fileWords = 0;
+            state.data.rephraser.hasUploadedFile = false;
             state.data.rephraser.fileName = `Imported_${label}.txt`;
             const words = textToImport.trim().split(/\s+/).length;
-            showToast(`Imported <strong>${words.toLocaleString()} words</strong> from ${label}!`, 'success');
             renderWorkspace();
+            updateRephraserTargetEstimate(words);
+            showToast(`Imported <strong>${words.toLocaleString()} words</strong> from ${label}!`, 'success');
         }
 
         function copyRephraserOutput() {
@@ -2972,6 +3248,11 @@ This disconnect establishes the central empirical problem of this investigation.
                 return;
             }
             state.data[chapId].text = out;
+            state.data[chapId].pastedText = out;
+            state.data[chapId].fileText = '';
+            state.data[chapId].fileName = '';
+            state.data[chapId].fileWords = 0;
+            state.data[chapId].hasUploadedFile = false;
             state.data[chapId].status = 'Approved';
             showToast(`<strong>${chapId.toUpperCase()}</strong> updated in Studio with humanized rephrased text!`, 'success');
             renderSidebar();
@@ -3125,10 +3406,15 @@ This disconnect establishes the central empirical problem of this investigation.
             }
 
             state.data[chapId].text = textToApply;
+            state.data[chapId].pastedText = textToApply;
+            state.data[chapId].fileText = '';
+            state.data[chapId].fileName = '';
+            state.data[chapId].fileWords = 0;
+            state.data[chapId].hasUploadedFile = false;
             state.data[chapId].status = 'Approved';
             showToast(`<strong>${chapId.toUpperCase()}</strong> updated in Studio with ${isA7 ? 'Agent 7 Humanized' : 'Agent 6 Reconstructed'} text!`, 'success');
             renderSidebar();
-            if (state.activeTab === 'correction') {
+            if (state.activeTab === 'correction' || state.activeTab === chapId) {
                 renderWorkspace();
             }
         }
@@ -3161,7 +3447,7 @@ This disconnect establishes the central empirical problem of this investigation.
             const corr = state.data.correction;
             if (corr.isRunning || corr.agent7Running) return;
 
-            const text = corr.text.trim();
+            const text = (corr.hasUploadedFile && corr.fileText) ? corr.fileText.trim() : corr.text.trim();
             if (text.length < 20) {
                 alert("Please upload a correction document or paste at least a brief summary of the required corrections (at least 20 characters).");
                 return;
@@ -3231,24 +3517,24 @@ ${state.data.coherence.output.substring(0, 15000)}
 
             const userPrompt = `HERE ARE THE CORRECTION REQUIREMENTS & EXAMINER FEEDBACK:
 ---
-${corr.text}
+${text}
 ---
 ${coherenceContext}
 HERE IS THE EXISTING THESIS DRAFT CONTEXT FROM THE STUDIO (IF ANY):
 [CHAPTER 1 CURRENT DRAFT]
-${state.data.ch1.text ? state.data.ch1.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 1 draft meeting the correction criteria.'}
+${getActiveChapterText('ch1') ? getActiveChapterText('ch1').substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 1 draft meeting the correction criteria.'}
 
 [CHAPTER 2 CURRENT DRAFT]
-${state.data.ch2.text ? state.data.ch2.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 2 draft meeting the correction criteria.'}
+${getActiveChapterText('ch2') ? getActiveChapterText('ch2').substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 2 draft meeting the correction criteria.'}
 
 [CHAPTER 3 CURRENT DRAFT]
-${state.data.ch3.text ? state.data.ch3.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 3 draft meeting the correction criteria.'}
+${getActiveChapterText('ch3') ? getActiveChapterText('ch3').substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 3 draft meeting the correction criteria.'}
 
 [CHAPTER 4 CURRENT DRAFT]
-${state.data.ch4.text ? state.data.ch4.text.substring(0, 10000) : 'Draft not yet loaded in studio.'}
+${getActiveChapterText('ch4') ? getActiveChapterText('ch4').substring(0, 10000) : 'Draft not yet loaded in studio.'}
 
 [CHAPTER 5 CURRENT DRAFT]
-${state.data.ch5.text ? state.data.ch5.text.substring(0, 10000) : 'Draft not yet loaded in studio.'}
+${getActiveChapterText('ch5') ? getActiveChapterText('ch5').substring(0, 10000) : 'Draft not yet loaded in studio.'}
 
 Please reconstruct each chapter and rephrase the content according to the required corrections. Ensure results are strictly split into Chapter 1, Chapter 2, Chapter 3 (and subsequent chapters if relevant).`;
 
@@ -3285,11 +3571,10 @@ Please reconstruct each chapter and rephrase the content according to the requir
             let sourceDrafts = corr.output;
             if (!sourceDrafts || sourceDrafts.trim().length < 50) {
                 const loaded = [];
-                if (state.data.ch1.text) loaded.push(`### CHAPTER 1 DRAFT\n${state.data.ch1.text}`);
-                if (state.data.ch2.text) loaded.push(`### CHAPTER 2 DRAFT\n${state.data.ch2.text}`);
-                if (state.data.ch3.text) loaded.push(`### CHAPTER 3 DRAFT\n${state.data.ch3.text}`);
-                if (state.data.ch4.text) loaded.push(`### CHAPTER 4 DRAFT\n${state.data.ch4.text}`);
-                if (state.data.ch5.text) loaded.push(`### CHAPTER 5 DRAFT\n${state.data.ch5.text}`);
+                ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].forEach((cid, idx) => {
+                    const txt = getActiveChapterText(cid);
+                    if (txt) loaded.push(`### CHAPTER ${idx + 1} DRAFT\n${txt}`);
+                });
                 sourceDrafts = loaded.join('\n\n---\n\n');
             }
 
@@ -3387,14 +3672,21 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
 
         function handleTextChange(agentId, val) {
             state.data[agentId].text = val;
+            state.data[agentId].pastedText = val;
             const words = val.trim() ? val.trim().split(/\s+/).length : 0;
             const el = document.getElementById('word-count');
-            if (el) el.textContent = `${words} words`;
+            if (el) el.textContent = `${words.toLocaleString()} words`;
         }
 
         function clearText(agentId) {
             state.data[agentId].text = '';
+            state.data[agentId].pastedText = '';
+            state.data[agentId].fileText = '';
+            state.data[agentId].fileName = '';
+            state.data[agentId].fileWords = 0;
+            state.data[agentId].hasUploadedFile = false;
             renderWorkspace();
+            showToast(`Cleared input for ${agentId.toUpperCase()}.`, 'info');
         }
 
         function downloadOutput(id) {
@@ -4115,9 +4407,9 @@ ${rtfBody}
             const rep = state.data.rephraser;
             if (rep.isRunning) return;
 
-            const text = rep.text.trim();
+            const text = (rep.hasUploadedFile && rep.fileText) ? rep.fileText.trim() : rep.text.trim();
             if (text.length < 30) {
-                alert("Please provide at least 30 characters of manuscript text to rephrase.");
+                alert("Please provide at least 30 characters of manuscript text to rephrase (either by uploading a document or pasting into the manual paste area).");
                 return;
             }
 
@@ -4434,7 +4726,7 @@ Construct a comprehensive Markdown table summarizing the Golden Thread alignment
             let chapsContext = '';
             approvedChapterIds.forEach(id => {
                 const d = state.data[id];
-                const draftSnippet = d.text ? d.text.substring(0, 10000) : '';
+                const draftSnippet = getActiveChapterText(id).substring(0, 10000);
                 const auditSnippet = d.output ? d.output.substring(0, 4000) : '';
                 chapsContext += `\n\n=== ${id.toUpperCase()} APPROVED DRAFT & AUDIT ===\nStatus: ${d.status}\n[DRAFT EXCERPT]:\n${draftSnippet || 'No draft text'}\n[AUDIT CRITIQUE]:\n${auditSnippet || 'No audit critique'}\n`;
             });
@@ -4479,9 +4771,10 @@ Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Cha
             const data = state.data[agentId];
             if (data.isRunning) return;
 
-            const text = data.text;
-            if (text.trim().length < 50) {
-                alert(`Please provide text (at least 50 characters) for ${agentId.toUpperCase()} before running review.`);
+            const agentProfile = systemAgents.find(a => a.id === agentId);
+            const text = (data.hasUploadedFile && data.fileText) ? data.fileText.trim() : (data.pastedText || data.text || '').trim();
+            if (text.length < 50) {
+                alert(`Please provide text or upload a document (at least 50 characters) for ${agentProfile ? agentProfile.title : agentId.toUpperCase()} before running review.`);
                 return;
             }
 
@@ -4491,7 +4784,6 @@ Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Cha
                 renderWorkspace();
             }
 
-            const agentProfile = systemAgents.find(a => a.id === agentId);
             showToast(`Review started for <strong>${agentProfile.title}</strong> (Running concurrently)...`, 'info');
             const prompt = `Review the following text excerpt from the thesis:\n\n---\n${text.substring(0, 30000)}\n---\n\nProvide your analysis based on your persona.`;
             
@@ -4523,11 +4815,12 @@ Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Cha
         function runAllChaptersConcurrently() {
             const readyToRun = systemAgents.filter(a => {
                 const d = state.data[a.id];
-                return d.text.trim().length >= 50 && !d.isRunning;
+                const txt = (d.hasUploadedFile && d.fileText) ? d.fileText.trim() : (d.pastedText || d.text || '').trim();
+                return txt.length >= 50 && !d.isRunning;
             });
 
             if (readyToRun.length === 0) {
-                alert("No ready chapters to run. Please paste or upload text into one or more chapters first (at least 50 characters each).");
+                alert("No ready chapters to run. Please paste or upload documents into one or more chapters first (at least 50 characters each).");
                 return;
             }
 
