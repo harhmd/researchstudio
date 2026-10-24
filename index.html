@@ -24,6 +24,9 @@
     <!-- HTML2PDF CDN for Client-Side Vector PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
+    <!-- HTML-DOCX CDN for Real Microsoft Word (.docx) Generation -->
+    <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.min.js"></script>
+
     <!-- Mermaid.js CDN for Diagrams and Architecture Charts -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
@@ -1992,6 +1995,13 @@
                                         <i class="fa-solid fa-file-pdf"></i> PDF (.pdf)
                                     </button>
 
+                                    <!-- Export Rich Text (.rtf) -->
+                                    <button onclick="exportCorrectionToRtf('active', 'active')" 
+                                            class="text-xs text-amber-300 hover:text-white hover:bg-dark-750 px-2 py-1.5 rounded-md transition-colors font-medium text-[11px] ml-0.5" 
+                                            title="Export as Rich Text Document (.rtf) with structured tables">
+                                        .rtf
+                                    </button>
+
                                     <!-- Export Markdown -->
                                     <button onclick="downloadCurrentCorrectionTabMd()" 
                                             class="text-xs text-slate-400 hover:text-white hover:bg-dark-750 px-2 py-1.5 rounded-md transition-colors ml-0.5" 
@@ -3015,15 +3025,149 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
             }
         }
 
+        function escapeHtml(text) {
+            if (!text) return '';
+            return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeRtfText(text) {
+            if (!text) return '';
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const code = text.charCodeAt(i);
+                if (char === '\\') {
+                    result += '\\\\';
+                } else if (char === '{') {
+                    result += '\\{';
+                } else if (char === '}') {
+                    result += '\\}';
+                } else if (code > 127) {
+                    const signedCode = code > 32767 ? code - 65536 : code;
+                    result += '\\u' + signedCode + '?';
+                } else {
+                    result += char;
+                }
+            }
+            return result;
+        }
+
+        function convertMarkdownToRtf(md, docTitle = 'PhD Thesis Manuscript') {
+            if (!md) return '';
+            const lines = md.split(/\r?\n/);
+            let rtfBody = '';
+            let inTable = false;
+            let tableRows = [];
+
+            function flushTable() {
+                if (!inTable || tableRows.length === 0) return;
+                let maxCols = 0;
+                tableRows.forEach(r => { if (r.length > maxCols) maxCols = r.length; });
+                if (maxCols === 0) { inTable = false; tableRows = []; return; }
+
+                const colWidth = Math.floor(9200 / maxCols);
+                tableRows.forEach((row, rowIdx) => {
+                    let rowRtf = '\\trowd\\trgaph108\\trleft-108';
+                    for (let c = 0; c < maxCols; c++) {
+                        const cellRight = (c + 1) * colWidth;
+                        rowRtf += '\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10';
+                        if (rowIdx === 0) rowRtf += '\\clcbpat1';
+                        rowRtf += `\\cellx${cellRight}`;
+                    }
+                    rowRtf += ' ';
+                    for (let c = 0; c < maxCols; c++) {
+                        const cellText = row[c] || '';
+                        const isHeader = rowIdx === 0;
+                        rowRtf += `\\intbl ${isHeader ? '\\b ' : ''}${escapeRtfText(cellText)}${isHeader ? '\\b0 ' : ''}\\cell `;
+                    }
+                    rowRtf += '\\row\n';
+                    rtfBody += rowRtf;
+                });
+                rtfBody += '\\pard\\par\n';
+                inTable = false;
+                tableRows = [];
+            }
+
+            if (docTitle) {
+                rtfBody += `\\pard\\b\\fs36\\qc ${escapeRtfText(docTitle)}\\b0\\fs24\\ql\\par\\sa240\n`;
+            }
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    if (/^\|[\s\-:|]+\|$/.test(line)) continue;
+                    inTable = true;
+                    const cells = line.slice(1, -1).split('|').map(c => c.trim());
+                    tableRows.push(cells);
+                    continue;
+                } else if (inTable) {
+                    flushTable();
+                }
+
+                if (!line) {
+                    rtfBody += '\\pard\\par\n';
+                    continue;
+                }
+
+                if (line.startsWith('# ')) {
+                    const heading = line.slice(2).trim();
+                    rtfBody += `\\pard\\b\\fs32 ${escapeRtfText(heading)}\\b0\\fs24\\par\\sa180\n`;
+                } else if (line.startsWith('## ')) {
+                    const heading = line.slice(3).trim();
+                    rtfBody += `\\pard\\b\\fs28 ${escapeRtfText(heading)}\\b0\\fs24\\par\\sa140\n`;
+                } else if (line.startsWith('### ')) {
+                    const heading = line.slice(4).trim();
+                    rtfBody += `\\pard\\b\\fs26 ${escapeRtfText(heading)}\\b0\\fs24\\par\\sa100\n`;
+                } else if (line.startsWith('- ') || line.startsWith('* ')) {
+                    const bullet = line.slice(2).trim();
+                    let parsed = escapeRtfText(bullet);
+                    parsed = parsed.replace(/\\\*\\\*(.+?)\\\*\\\*/g, '\\b $1\\b0 ');
+                    rtfBody += `\\pard{\\pntext\\bullet\\tab}\\fi-360\\li720 ${parsed}\\par\\sa60\n`;
+                } else {
+                    let parsed = escapeRtfText(line);
+                    parsed = parsed.replace(/\*\*(.+?)\*\*/g, '\\b $1\\b0 ');
+                    parsed = parsed.replace(/\*(.+?)\*/g, '\\i $1\\i0 ');
+                    rtfBody += `\\pard\\sa180\\sl360\\slmult1 ${parsed}\\par\n`;
+                }
+            }
+            if (inTable) flushTable();
+
+            return `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}
+{\\colortbl ;\\red241\\green245\\blue249;}
+\\viewkind4\\uc1
+${rtfBody}
+}`;
+        }
+
+        function extractChapterText(fullText, chapterKey) {
+            if (!fullText) return '';
+            const chNum = chapterKey.replace('ch', '').trim();
+            const regex = new RegExp(`(?:###?\\s*(?:CHAPTER|Chapter)\\s*${chNum}[^\\n]*)([\\s\\S]*?)(?=(?:###?\\s*(?:CHAPTER|Chapter)\\s*\\d)|(?:###?\\s*TURNITIN)|$)`, 'i');
+            const match = fullText.match(regex);
+            if (match && match[0]) {
+                return match[0].trim();
+            }
+            return '';
+        }
+
         async function convertSvgToPngDataUrl(svgElement, scale = 2) {
             return new Promise((resolve) => {
+                let timer = null;
                 try {
                     const svgString = new XMLSerializer().serializeToString(svgElement);
                     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
                     const URLObj = window.URL || window.webkitURL || window;
                     const blobURL = URLObj.createObjectURL(svgBlob);
                     const img = new Image();
+
+                    timer = setTimeout(() => {
+                        URLObj.revokeObjectURL(blobURL);
+                        resolve(null);
+                    }, 2500);
+
                     img.onload = () => {
+                        if (timer) clearTimeout(timer);
                         try {
                             const canvas = document.createElement('canvas');
                             const rect = svgElement.getBoundingClientRect();
@@ -3043,11 +3187,13 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
                         }
                     };
                     img.onerror = () => {
+                        if (timer) clearTimeout(timer);
                         URLObj.revokeObjectURL(blobURL);
                         resolve(null);
                     };
                     img.src = blobURL;
                 } catch (e) {
+                    if (timer) clearTimeout(timer);
                     resolve(null);
                 }
             });
@@ -3072,8 +3218,11 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
                         const { svg } = await mermaid.render(uniqueId, code);
                         
                         const svgHolder = document.createElement('div');
-                        svgHolder.style.position = 'fixed';
-                        svgHolder.style.top = '-99999px';
+                        svgHolder.style.position = 'absolute';
+                        svgHolder.style.left = '0';
+                        svgHolder.style.top = '0';
+                        svgHolder.style.zIndex = '-999999';
+                        svgHolder.style.opacity = '1';
                         svgHolder.innerHTML = svg;
                         document.body.appendChild(svgHolder);
                         const svgEl = svgHolder.querySelector('svg');
@@ -3082,7 +3231,7 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
                         if (svgEl) {
                             pngUrl = await convertSvgToPngDataUrl(svgEl, 2);
                         }
-                        document.body.removeChild(svgHolder);
+                        if (svgHolder.parentElement) svgHolder.parentElement.removeChild(svgHolder);
 
                         const figureWrapper = document.createElement('div');
                         figureWrapper.style.cssText = "text-align: center; margin: 18pt 0; page-break-inside: avoid;";
@@ -3142,77 +3291,20 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
             return tempDiv.innerHTML;
         }
 
-        function downloadCurrentCorrectionTabMd() {
-            const corr = state.data.correction;
-            const isA7 = corr.activeStage === 'agent7';
-            const tab = corr.activeResultTab || 'all';
-            let content = '';
-            let fileScope = '';
-            if (tab === 'all') {
-                content = isA7 ? (corr.agent7Output || '') : (corr.output || '');
-                fileScope = 'All_Chapters';
-            } else {
-                const parsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
-                content = parsed[tab] || '';
-                fileScope = tab.toUpperCase();
-            }
-
-            if (!content || content.trim().length === 0) {
-                alert('No content available to export for this section.');
-                return;
-            }
-
-            const filename = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstruction'}_${fileScope}_${new Date().toISOString().slice(0, 10)}.md`;
-            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-            showToast(`Exported Markdown: <strong>${filename}</strong>`, 'info');
-        }
-
-        async function exportCorrectionToWord(stage = 'active', tab = 'active', format = 'docx') {
-            const corr = state.data.correction;
-            const actualStage = stage === 'active' ? (corr.activeStage || 'agent7') : stage;
-            const actualTab = tab === 'active' ? (corr.activeResultTab || 'all') : tab;
-            const isA7 = actualStage === 'agent7';
-            const stageLabel = isA7 ? 'Agent 7 Humanized & Turnitin-Bypass Manuscript' : 'Agent 6 Reconstructed Chapters';
-
-            let rawMd = '';
-            let fileScope = '';
-            if (actualTab === 'all') {
-                rawMd = isA7 ? (corr.agent7Output || '') : (corr.output || '');
-                fileScope = 'All_Chapters';
-            } else {
-                const parsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
-                rawMd = parsed[actualTab] || '';
-                fileScope = actualTab.toUpperCase();
-            }
-
-            if (!rawMd || rawMd.trim().length === 0) {
-                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run the correction pipeline first.`);
-                return;
-            }
-
-            showToast(`Generating Word document (${format.toUpperCase()}) with structured tables and graphics...`, 'info');
+        async function exportToWordDocument(markdownText, filenameBase, titleText, subtitleText, format = 'docx', isAllChapters = false) {
+            showToast(`Generating Word document (${format.toUpperCase()}) with native tables and graphics...`, 'info');
 
             try {
-                const processedHtml = await processContentForExport(rawMd, actualTab === 'all');
-
-                const titleText = `PhD Thesis: AI Chatbot Adoption Readiness in Malaysian Agriculture`;
-                const subtitleText = `${stageLabel} - ${fileScope.replace('_', ' ')}`;
+                const processedHtml = await processContentForExport(markdownText, isAllChapters);
                 const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-                const wordDocumentHtml = `
+                const wordDocumentHtml = `<!DOCTYPE html>
 <html xmlns:o='urn:schemas-microsoft-com:office:office' 
       xmlns:w='urn:schemas-microsoft-com:office:word' 
       xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
     <meta charset='utf-8'>
-    <title>${subtitleText}</title>
+    <title>${escapeHtml(subtitleText)}</title>
     <!--[if gte mso 9]>
     <xml>
         <w:WordDocument>
@@ -3281,6 +3373,7 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
             border-collapse: collapse;
             margin: 16pt 0;
             font-size: 10.5pt;
+            border: 1.5pt solid #334155;
             mso-displayed-decimal-separator: ".";
             mso-displayed-thousand-separator: ",";
         }
@@ -3302,7 +3395,7 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
             background-color: #f8fafc;
         }
         img {
-            max-width: 100%;
+            max-width: 95%;
             height: auto;
             margin: 14pt auto;
             display: block;
@@ -3311,21 +3404,14 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
             page-break-before: always;
             margin-top: 24pt;
         }
-        .figure-caption {
-            text-align: center;
-            font-size: 9.5pt;
-            color: #64748b;
-            font-style: italic;
-            margin-top: 4pt;
-        }
     </style>
 </head>
 <body>
     <div class="thesis-header-box">
-        <div class="thesis-main-title">${titleText}</div>
-        <div class="thesis-sub-title">${subtitleText}</div>
+        <div class="thesis-main-title">${escapeHtml(titleText)}</div>
+        <div class="thesis-sub-title">${escapeHtml(subtitleText)}</div>
         <div class="thesis-meta-info">
-            <strong>System:</strong> PhD Studio Multi-Agent Architecture &bull; 
+            <strong>System:</strong> ResearchStudio Multi-Agent Architecture &bull; 
             <strong>Date:</strong> ${exportDate} &bull; 
             <strong>Plagiarism Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
         </div>
@@ -3336,7 +3422,29 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
 </body>
 </html>`;
 
-                const filename = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstructed'}_${fileScope}_${new Date().toISOString().slice(0, 10)}.${format}`;
+                const filename = `${filenameBase}_${new Date().toISOString().slice(0, 10)}.${format}`;
+
+                if (format === 'docx' && window.htmlDocx) {
+                    try {
+                        const docxBlob = htmlDocx.asBlob(wordDocumentHtml, {
+                            orientation: 'portrait',
+                            margins: { top: 720, bottom: 720, left: 720, right: 720 }
+                        });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(docxBlob);
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+                        showToast(`✅ Exported Word document: <strong>${filename}</strong> with structured tables and graphics!`, 'success');
+                        return;
+                    } catch (docxErr) {
+                        console.warn('htmlDocx conversion fallback:', docxErr);
+                    }
+                }
+
+                // Fallback / .doc export format
                 const mimeType = format === 'docx' ? 'application/vnd.ms-word;charset=utf-8' : 'application/msword;charset=utf-8';
                 const blob = new Blob(['\ufeff', wordDocumentHtml], { type: mimeType });
                 const link = document.createElement('a');
@@ -3347,99 +3455,200 @@ Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Ch
                 document.body.removeChild(link);
                 setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 
-                showToast(`✅ Exported Word document: <strong>${filename}</strong> with structured tables and graphics!`, 'success');
+                showToast(`✅ Exported Word document: <strong>${filename}</strong> with structured tables!`, 'success');
             } catch (err) {
                 console.error('Word export error:', err);
                 showToast(`Export failed: ${err.message}`, 'error');
             }
         }
 
-        async function exportCorrectionToPdf(stage = 'active', tab = 'active') {
-            const corr = state.data.correction;
-            const actualStage = stage === 'active' ? (corr.activeStage || 'agent7') : stage;
-            const actualTab = tab === 'active' ? (corr.activeResultTab || 'all') : tab;
-            const isA7 = actualStage === 'agent7';
-            const stageLabel = isA7 ? 'Agent 7 Humanized (Turnitin Safe)' : 'Agent 6 Reconstructed Chapters';
-
-            let rawMd = '';
-            let fileScope = '';
-            if (actualTab === 'all') {
-                rawMd = isA7 ? (corr.agent7Output || '') : (corr.output || '');
-                fileScope = 'All_Chapters';
-            } else {
-                const parsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
-                rawMd = parsed[actualTab] || '';
-                fileScope = actualTab.toUpperCase();
-            }
-
-            if (!rawMd || rawMd.trim().length === 0) {
-                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run the correction pipeline first.`);
-                return;
-            }
-
+        async function exportToPdfDocument(markdownText, filenameBase, titleText, subtitleText, isAllChapters = false) {
             if (!window.html2pdf) {
                 alert("PDF generation library is still loading. Please try again in a few seconds.");
                 return;
             }
 
-            showToast(`Preparing high-resolution PDF with styled tables and charts...`, 'info');
+            showToast("Preparing high-resolution PDF with styled tables and charts...", "info");
 
             try {
-                const processedHtml = await processContentForExport(rawMd, actualTab === 'all');
-
-                const titleText = `PhD Thesis: AI Chatbot Adoption Readiness in Malaysian Agriculture`;
-                const subtitleText = `${stageLabel} - ${fileScope.replace('_', ' ')}`;
+                const processedHtml = await processContentForExport(markdownText, isAllChapters);
                 const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-                // Construct clean PDF print element
+                // Construct clean PDF print element positioned at (0, 0) with -999999 zIndex so html2canvas captures it fully
                 const container = document.createElement('div');
-                container.style.position = 'fixed';
-                container.style.top = '-99999px';
+                container.id = 'thesis-pdf-render-box';
+                container.style.position = 'absolute';
                 container.style.left = '0';
-                container.style.width = '800px';
+                container.style.top = '0';
+                container.style.width = '794px';
+                container.style.zIndex = '-999999';
+                container.style.opacity = '1';
+                container.style.pointerEvents = 'none';
                 container.style.backgroundColor = '#ffffff';
                 container.style.color = '#0f172a';
-                container.style.fontFamily = "'Inter', Arial, sans-serif";
-                container.style.padding = '24px 32px';
+                container.style.fontFamily = "'Times New Roman', 'Inter', Arial, sans-serif";
+                container.style.padding = '32px 40px';
                 container.style.boxSizing = 'border-box';
 
                 container.innerHTML = `
-                    <div style="border-bottom: 2px solid #2563eb; padding-bottom: 14px; margin-bottom: 24px; text-align: center;">
-                        <h1 style="font-size: 20px; font-weight: 700; color: #1e3a8a; margin: 0 0 6px 0;">${titleText}</h1>
-                        <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0;">${subtitleText}</p>
-                        <p style="font-size: 10px; color: #64748b; margin: 0;">
-                            <strong>Multi-Agent Research Studio</strong> &bull; 
+                    <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 14px; margin-bottom: 22px; text-align: center;">
+                        <h1 style="font-size: 20px; font-weight: 700; color: #1e3a8a; margin: 0 0 6px 0; font-family: 'Times New Roman', serif;">${escapeHtml(titleText)}</h1>
+                        <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0; font-family: 'Times New Roman', serif;">${escapeHtml(subtitleText)}</p>
+                        <p style="font-size: 10px; color: #64748b; margin: 0; font-family: 'Times New Roman', serif;">
+                            <strong>ResearchStudio Multi-Agent Architecture</strong> &bull; 
                             <strong>Date:</strong> ${exportDate} &bull; 
-                            <strong>Verified:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
+                            <strong>Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
                         </p>
                     </div>
-                    <div class="pdf-body" style="font-size: 12px; line-height: 1.65; color: #1e293b;">
+                    <div class="pdf-body" style="font-size: 11pt; line-height: 1.6; color: #1e293b; font-family: 'Times New Roman', serif; text-align: justify;">
                         ${processedHtml}
                     </div>
                 `;
 
                 document.body.appendChild(container);
 
-                const filename = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstructed'}_${fileScope}_${new Date().toISOString().slice(0, 10)}.pdf`;
+                const filename = `${filenameBase}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
                 const opt = {
                     margin: [10, 10, 12, 10],
                     filename: filename,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    html2canvas: { 
+                        scale: 2, 
+                        useCORS: true, 
+                        logging: false,
+                        scrollY: 0,
+                        scrollX: 0,
+                        windowWidth: 794
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
                     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
                 };
 
                 await html2pdf().set(opt).from(container).save();
-                document.body.removeChild(container);
-
                 showToast(`✅ Exported PDF: <strong>${filename}</strong> with formatted tables!`, 'success');
             } catch (err) {
                 console.error('PDF export error:', err);
                 showToast(`PDF Export failed: ${err.message}`, 'error');
+            } finally {
+                const el = document.getElementById('thesis-pdf-render-box');
+                if (el && el.parentElement) el.parentElement.removeChild(el);
             }
         }
+
+        function exportToRtfDocument(markdownText, filenameBase, docTitle = 'PhD Thesis Manuscript') {
+            try {
+                const rtfString = convertMarkdownToRtf(markdownText, docTitle);
+                const filename = `${filenameBase}_${new Date().toISOString().slice(0, 10)}.rtf`;
+                const blob = new Blob([rtfString], { type: 'application/rtf;charset=utf-8' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+                showToast(`✅ Exported Rich Text: <strong>${filename}</strong> with structured tables!`, 'success');
+            } catch (err) {
+                console.error('RTF export error:', err);
+                showToast(`RTF export failed: ${err.message}`, 'error');
+            }
+        }
+
+        function getCorrectionContent(stage = 'active', tab = 'active') {
+            const corr = state.data.correction;
+            const actualStage = stage === 'active' ? (corr.activeStage || (corr.agent7Output ? 'agent7' : 'agent6')) : stage;
+            const actualTab = tab === 'active' ? (corr.activeResultTab || 'all') : tab;
+            const isA7 = actualStage === 'agent7';
+            const stageLabel = isA7 ? 'Agent 7 Humanized (Turnitin Safe)' : 'Agent 6 Reconstructed Chapters';
+
+            let content = '';
+            let fileScope = actualTab === 'all' ? 'All_Chapters' : actualTab.toUpperCase();
+
+            if (actualTab === 'all') {
+                content = isA7 ? (corr.agent7Output || corr.output || '') : (corr.output || corr.agent7Output || '');
+            } else {
+                const primaryParsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
+                const secondaryParsed = isA7 ? (corr.parsedChapters || {}) : (corr.agent7ParsedChapters || {});
+                content = primaryParsed[actualTab] || secondaryParsed[actualTab] || '';
+
+                if (!content || content.trim().length === 0) {
+                    const allText = isA7 ? (corr.agent7Output || corr.output || '') : (corr.output || corr.agent7Output || '');
+                    content = extractChapterText(allText, actualTab);
+                }
+
+                if (!content || content.trim().length === 0) {
+                    content = state.data[actualTab]?.text || '';
+                }
+            }
+
+            return { content: (content || '').trim(), stageLabel, fileScope, isA7, actualTab };
+        }
+
+        function downloadCurrentCorrectionTabMd() {
+            const { content, stageLabel, fileScope, isA7 } = getCorrectionContent('active', 'active');
+
+            if (!content) {
+                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run Agent 6 or 7 first.`);
+                return;
+            }
+
+            const filename = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstruction'}_${fileScope}_${new Date().toISOString().slice(0, 10)}.md`;
+            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            showToast(`Exported Markdown: <strong>${filename}</strong>`, 'info');
+        }
+
+        async function exportCorrectionToWord(stage = 'active', tab = 'active', format = 'docx') {
+            const { content, stageLabel, fileScope, isA7, actualTab } = getCorrectionContent(stage, tab);
+
+            if (!content) {
+                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run the correction pipeline first.`);
+                return;
+            }
+
+            const filenameBase = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstructed'}_${fileScope}`;
+            const titleText = `PhD Thesis: AI Chatbot Adoption Readiness in Malaysian Agriculture`;
+            const subtitleText = `${stageLabel} - ${fileScope.replace('_', ' ')}`;
+
+            await exportToWordDocument(content, filenameBase, titleText, subtitleText, format, actualTab === 'all');
+        }
+
+        async function exportCorrectionToPdf(stage = 'active', tab = 'active') {
+            const { content, stageLabel, fileScope, isA7, actualTab } = getCorrectionContent(stage, tab);
+
+            if (!content) {
+                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run the correction pipeline first.`);
+                return;
+            }
+
+            const filenameBase = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstructed'}_${fileScope}`;
+            const titleText = `PhD Thesis: AI Chatbot Adoption Readiness in Malaysian Agriculture`;
+            const subtitleText = `${stageLabel} - ${fileScope.replace('_', ' ')}`;
+
+            await exportToPdfDocument(content, filenameBase, titleText, subtitleText, actualTab === 'all');
+        }
+
+        function exportCorrectionToRtf(stage = 'active', tab = 'active') {
+            const { content, stageLabel, fileScope, isA7 } = getCorrectionContent(stage, tab);
+
+            if (!content) {
+                alert(`No generated text available to export for ${stageLabel} (${fileScope}). Please run the correction pipeline first.`);
+                return;
+            }
+
+            const filenameBase = `ResearchStudio_${isA7 ? 'Agent7_Turnitin_Safe' : 'Agent6_Reconstructed'}_${fileScope}`;
+            const titleText = `PhD Thesis: ${stageLabel} (${fileScope.replace('_', ' ')})`;
+
+            exportToRtfDocument(content, filenameBase, titleText);
+        }
+
 
         // ==========================================
         // REPHRASER EXECUTION & RICH EXPORT PIPELINE
@@ -3554,249 +3763,52 @@ Please provide the completely rephrased, humanized academic text ready for docto
 
         async function exportRephraserToWord(format = 'docx') {
             const rep = state.data.rephraser;
-            const text = rep.output || rep.text;
-            if (!text || text.trim().length === 0) {
-                alert("No content available to export.");
+            const text = (rep.output || rep.text || '').trim();
+            if (!text) {
+                alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            showToast(`Generating Word document (${format.toUpperCase()}) with native tables and graphics...`, 'info');
+            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
+            const titleText = 'PhD Thesis: Rephrased & Humanized Manuscript';
+            const subtitleText = 'Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)';
 
-            try {
-                const processedHtml = await processContentForExport(text, false);
-                const titleText = `PhD Thesis: Rephrased & Humanized Manuscript`;
-                const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)`;
-                const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-                const wordDocumentHtml = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' 
-      xmlns:w='urn:schemas-microsoft-com:office:word' 
-      xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-    <meta charset='utf-8'>
-    <title>${titleText}</title>
-    <!--[if gte mso 9]>
-    <xml>
-        <w:WordDocument>
-            <w:View>Print</w:View>
-            <w:Zoom>100</w:Zoom>
-            <w:DoNotOptimizeForBrowser/>
-        </w:WordDocument>
-    </xml>
-    <![endif]-->
-    <style>
-        @page {
-            size: 8.5in 11.0in;
-            margin: 1.0in 1.0in 1.0in 1.0in;
-            mso-header-margin: 0.5in;
-            mso-footer-margin: 0.5in;
-        }
-        body {
-            font-family: 'Times New Roman', 'Calibri', serif;
-            font-size: 12pt;
-            line-height: 1.6;
-            color: #111827;
-            text-align: justify;
-        }
-        .thesis-header-box {
-            text-align: center;
-            border-bottom: 2pt solid #4338ca;
-            padding-bottom: 18pt;
-            margin-bottom: 24pt;
-        }
-        .thesis-main-title {
-            font-size: 20pt;
-            font-weight: bold;
-            color: #3730a3;
-            margin-bottom: 6pt;
-        }
-        .thesis-sub-title {
-            font-size: 13pt;
-            font-weight: 600;
-            color: #334155;
-            margin-bottom: 6pt;
-        }
-        .thesis-meta-info {
-            font-size: 10pt;
-            color: #64748b;
-        }
-        h1, h2, h3, h4 {
-            font-family: 'Times New Roman', serif;
-            page-break-after: avoid;
-        }
-        h1 { font-size: 18pt; font-weight: bold; color: #3730a3; margin-top: 20pt; margin-bottom: 8pt; }
-        h2 { font-size: 15pt; font-weight: bold; color: #3730a3; margin-top: 16pt; margin-bottom: 6pt; border-bottom: 1pt solid #cbd5e1; padding-bottom: 4pt; }
-        h3 { font-size: 13pt; font-weight: bold; color: #0f172a; margin-top: 14pt; margin-bottom: 6pt; }
-        p { margin-bottom: 10pt; line-height: 1.6; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 16pt 0;
-            font-size: 10.5pt;
-        }
-        th {
-            background-color: #f1f5f9;
-            color: #0f172a;
-            font-weight: bold;
-            border: 1.5pt solid #475569;
-            padding: 7pt 10pt;
-            text-align: left;
-        }
-        td {
-            border: 1pt solid #cbd5e1;
-            padding: 6pt 10pt;
-            vertical-align: top;
-            color: #1e293b;
-        }
-        tr:nth-child(even) td {
-            background-color: #f8fafc;
-        }
-        img {
-            max-width: 100%;
-            height: auto;
-            margin: 14pt auto;
-            display: block;
-        }
-    </style>
-</head>
-<body>
-    <div class="thesis-header-box">
-        <div class="thesis-main-title">${titleText}</div>
-        <div class="thesis-sub-title">${subtitleText}</div>
-        <div class="thesis-meta-info">
-            <strong>System:</strong> PhD Studio Rephraser &bull; 
-            <strong>Date:</strong> ${exportDate} &bull; 
-            <strong>Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
-        </div>
-    </div>
-    <div class="thesis-content">
-        ${processedHtml}
-    </div>
-</body>
-</html>`;
-
-                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.${format}`;
-                const mimeType = format === 'docx' ? 'application/vnd.ms-word;charset=utf-8' : 'application/msword;charset=utf-8';
-                const blob = new Blob(['\ufeff', wordDocumentHtml], { type: mimeType });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-
-                showToast(`✅ Exported Word document: <strong>${filename}</strong> with styled tables!`, 'success');
-            } catch(e) {
-                console.error("Rephraser Word export error:", e);
-                showToast(`Export failed: ${e.message}`, 'error');
-            }
+            await exportToWordDocument(text, filenameBase, titleText, subtitleText, format, false);
         }
 
         async function exportRephraserToPdf() {
             const rep = state.data.rephraser;
-            const text = rep.output || rep.text;
-            if (!text || text.trim().length === 0) {
-                alert("No content available to export.");
+            const text = (rep.output || rep.text || '').trim();
+            if (!text) {
+                alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            if (!window.html2pdf) {
-                alert("PDF generation library is still loading. Please try again.");
-                return;
-            }
+            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
+            const titleText = 'PhD Thesis: Rephrased & Humanized Manuscript';
+            const subtitleText = 'Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)';
 
-            showToast("Preparing high-resolution PDF with styled tables...", "info");
-
-            try {
-                const processedHtml = await processContentForExport(text, false);
-                const titleText = `PhD Thesis: Rephrased & Humanized Manuscript`;
-                const subtitleText = `Turnitin & AI-Detection Compliant (<20% Plag, <10% AI)`;
-                const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-                const container = document.createElement('div');
-                container.style.position = 'fixed';
-                container.style.top = '-99999px';
-                container.style.left = '0';
-                container.style.width = '800px';
-                container.style.backgroundColor = '#ffffff';
-                container.style.color = '#0f172a';
-                container.style.fontFamily = "'Inter', Arial, sans-serif";
-                container.style.padding = '24px 32px';
-                container.style.boxSizing = 'border-box';
-
-                container.innerHTML = `
-                    <div style="border-bottom: 2px solid #4338ca; padding-bottom: 14px; margin-bottom: 24px; text-align: center;">
-                        <h1 style="font-size: 20px; font-weight: 700; color: #3730a3; margin: 0 0 6px 0;">${titleText}</h1>
-                        <p style="font-size: 13px; font-weight: 600; color: #475569; margin: 0 0 6px 0;">${subtitleText}</p>
-                        <p style="font-size: 10px; color: #64748b; margin: 0;">
-                            <strong>ResearchStudio Humanizer Engine</strong> &bull; 
-                            <strong>Date:</strong> ${exportDate} &bull; 
-                            <strong>Audit:</strong> Turnitin &lt; 20% &bull; AI Content &lt; 10%
-                        </p>
-                    </div>
-                    <div class="pdf-body" style="font-size: 12px; line-height: 1.65; color: #1e293b;">
-                        ${processedHtml}
-                    </div>
-                `;
-
-                document.body.appendChild(container);
-
-                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.pdf`;
-
-                const opt = {
-                    margin: [10, 10, 12, 10],
-                    filename: filename,
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-                };
-
-                await html2pdf().set(opt).from(container).save();
-                document.body.removeChild(container);
-
-                showToast(`✅ Exported PDF: <strong>${filename}</strong> with formatted tables!`, 'success');
-            } catch(e) {
-                console.error("Rephraser PDF export error:", e);
-                showToast(`PDF Export failed: ${e.message}`, 'error');
-            }
+            await exportToPdfDocument(text, filenameBase, titleText, subtitleText, false);
         }
 
-        async function exportRephraserToRtf() {
+        function exportRephraserToRtf() {
             const rep = state.data.rephraser;
-            const text = rep.output || rep.text;
-            if (!text || text.trim().length === 0) {
-                alert("No content available to export.");
+            const text = (rep.output || rep.text || '').trim();
+            if (!text) {
+                alert("No content available to export. Please paste, upload, or rephrase a manuscript first.");
                 return;
             }
 
-            try {
-                const processedHtml = await processContentForExport(text, false);
-                const rtfContent = `{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}
-\\viewkind4\\uc1\\pard\\f0\\fs24
-${processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}
-}`;
-                const filename = `ResearchStudio_Rephrased_Manuscript_${new Date().toISOString().slice(0, 10)}.rtf`;
-                const blob = new Blob([rtfContent], { type: 'application/rtf;charset=utf-8' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-                showToast(`✅ Exported Rich Text: <strong>${filename}</strong>`, 'success');
-            } catch(e) {
-                console.error("RTF export error:", e);
-                showToast(`RTF export failed: ${e.message}`, 'error');
-            }
+            const filenameBase = 'ResearchStudio_Rephrased_Manuscript';
+            const docTitle = 'PhD Thesis: Rephrased & Humanized Manuscript';
+
+            exportToRtfDocument(text, filenameBase, docTitle);
         }
 
         function downloadRephraserMd() {
             const rep = state.data.rephraser;
-            const text = rep.output || rep.text;
-            if (!text || text.trim().length === 0) {
+            const text = (rep.output || rep.text || '').trim();
+            if (!text) {
                 alert("No content available to export.");
                 return;
             }
@@ -3811,6 +3823,7 @@ ${processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')}
             setTimeout(() => URL.revokeObjectURL(link.href), 1000);
             showToast(`Exported Markdown: <strong>${filename}</strong>`, 'info');
         }
+
 
         async function runAgent(agentId) {
             const data = state.data[agentId];
