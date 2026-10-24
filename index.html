@@ -14,7 +14,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         if (window.pdfjsLib) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            try {
+                // Use a Same-Origin Blob Worker to avoid cross-origin SecurityError on custom domains and IP ports
+                var workerScript = "importScripts('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');";
+                var workerBlob = new Blob([workerScript], { type: 'application/javascript' });
+                pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
+            } catch (err) {
+                console.warn('PDF.js blob worker creation failed, using CDN fallback:', err);
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
         }
     </script>
 
@@ -757,7 +765,11 @@
                     throw new Error("No readable text could be extracted from this document.");
                 }
 
+                if (!state.data[agentId]) {
+                    state.data[agentId] = { text: '' };
+                }
                 state.data[agentId].text = extractedText;
+
                 if (agentId === 'correction') {
                     state.data.correction.fileName = filename;
                     const fnEl = document.getElementById('correction-file-badge');
@@ -769,7 +781,7 @@
                     state.data.rephraser.fileName = filename;
                     const fnEl = document.getElementById('rephraser-file-badge');
                     if (fnEl) {
-                        fnEl.textContent = filename;
+                        fnEl.innerHTML = `<i class="fa-solid fa-file-lines text-xs text-indigo-400"></i> ${filename}`;
                         fnEl.classList.remove('hidden');
                     }
                 }
@@ -796,7 +808,6 @@
             } catch(err) {
                 console.error("Document extraction error:", err);
                 showToast(`Failed to parse ${filename}: ${err.message}`, 'error');
-                alert(`Error reading file ${filename}: ${err.message}`);
             } finally {
                 if (idleBox) idleBox.classList.remove('hidden');
                 if (loadingBox) loadingBox.classList.add('hidden');
@@ -806,70 +817,236 @@
         }
 
         async function extractTextFromPDF(file, statusText) {
-            if (!window.pdfjsLib) {
-                throw new Error("PDF.js library is not loaded. Please refresh the page.");
-            }
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            const totalPages = pdf.numPages;
-            let fullText = [];
 
-            for (let i = 1; i <= totalPages; i++) {
-                if (statusText && i % 2 === 0) {
-                    statusText.textContent = `Extracting PDF Page ${i} of ${totalPages}...`;
-                }
-                const page = await pdf.getPage(i);
-                const tokenContent = await page.getTextContent();
-                const pageText = tokenContent.items.map(item => item.str).join(' ');
-                if (pageText.trim()) {
-                    fullText.push(`[Page ${i}]\n${pageText}`);
+            // Tier 1: PDF.js client-side text extractor
+            if (window.pdfjsLib) {
+                try {
+                    const data = new Uint8Array(arrayBuffer);
+                    const loadingTask = pdfjsLib.getDocument({ data: data });
+                    const pdf = await loadingTask.promise;
+                    const totalPages = pdf.numPages;
+                    let fullText = [];
+
+                    for (let i = 1; i <= totalPages; i++) {
+                        if (statusText && i % 2 === 0) {
+                            statusText.textContent = `Extracting PDF Page ${i} of ${totalPages}...`;
+                        }
+                        const page = await pdf.getPage(i);
+                        const tokenContent = await page.getTextContent();
+                        
+                        // Extract text preserving line-breaks using Y coordinates
+                        let lastY;
+                        let pageLines = [];
+                        let currentLine = '';
+                        for (const item of tokenContent.items) {
+                            if (item.transform && item.transform.length >= 6) {
+                                const currentY = item.transform[5];
+                                if (lastY !== undefined && Math.abs(currentY - lastY) > 5) {
+                                    if (currentLine.trim()) pageLines.push(currentLine.trim());
+                                    currentLine = '';
+                                }
+                                lastY = currentY;
+                            }
+                            currentLine += (currentLine ? ' ' : '') + item.str;
+                        }
+                        if (currentLine.trim()) pageLines.push(currentLine.trim());
+
+                        const pageText = pageLines.length > 0 
+                            ? pageLines.join('\n') 
+                            : tokenContent.items.map(item => item.str).join(' ');
+
+                        if (pageText.trim()) {
+                            fullText.push(`[Page ${i}]\n${pageText}`);
+                        }
+                    }
+
+                    const extracted = fullText.join('\n\n').trim();
+                    if (extracted.length > 20) {
+                        return extracted;
+                    }
+                } catch (pdfErr) {
+                    console.warn("PDF.js worker/canvas extraction failed, engaging direct stream fallback:", pdfErr);
                 }
             }
-            return fullText.join('\n\n');
+
+            // Tier 2: Stream fallback for protected or headless PDF streams
+            const streamText = extractTextFromPDFStreams(arrayBuffer);
+            if (streamText && streamText.length > 20) {
+                return streamText;
+            }
+
+            throw new Error("Unable to extract text from PDF. The document might be image-only (scanned), encrypted, or empty.");
         }
 
         async function extractTextFromDocx(file) {
-            if (!window.mammoth) {
-                throw new Error("Mammoth Word extraction library is not loaded. Please refresh the page.");
-            }
             const arrayBuffer = await file.arrayBuffer();
-            const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-            return result.value;
+
+            // Tier 1: Mammoth Raw Text extraction
+            if (window.mammoth) {
+                try {
+                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    if (result && result.value && result.value.trim().length > 20) {
+                        return result.value.trim();
+                    }
+                } catch (err) {
+                    console.warn("mammoth.extractRawText failed, trying convertToMarkdown:", err);
+                }
+
+                // Tier 2: Mammoth Markdown extraction (catches tables, headings, lists)
+                try {
+                    const mdResult = await mammoth.convertToMarkdown({ arrayBuffer: arrayBuffer });
+                    if (mdResult && mdResult.value && mdResult.value.trim().length > 20) {
+                        return mdResult.value.trim();
+                    }
+                } catch (err) {
+                    console.warn("mammoth.convertToMarkdown failed:", err);
+                }
+            }
+
+            // Tier 3: Binary extraction fallback (e.g. if a .doc file was saved with .docx extension)
+            const fallbackText = extractTextFromBinaryDoc(arrayBuffer);
+            if (fallbackText && fallbackText.trim().length > 20) {
+                return fallbackText.trim();
+            }
+
+            throw new Error("No readable text could be extracted from this Word (.docx) document. Ensure the document is not password protected.");
         }
 
         async function extractTextFromDoc(file) {
-            try {
-                if (window.mammoth) {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                    if (result.value && result.value.trim().length > 50) {
-                        return result.value;
-                    }
-                }
-            } catch(e) {}
+            const arrayBuffer = await file.arrayBuffer();
 
-            // String extraction fallback for legacy binary doc / RTF files
-            const buffer = await file.arrayBuffer();
+            // Tier 1: Try Mammoth in case it's actually an OpenXML docx with .doc extension
+            if (window.mammoth) {
+                try {
+                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    if (result && result.value && result.value.trim().length > 20) {
+                        return result.value.trim();
+                    }
+                } catch (err) {}
+            }
+
+            // Tier 2: Dual-Mode UTF-16LE + ASCII + RTF binary scanner
+            const text = extractTextFromBinaryDoc(arrayBuffer);
+            if (text && text.trim().length > 20) {
+                return text.trim();
+            }
+
+            throw new Error("Legacy binary .doc file could not be parsed cleanly. Please save as .docx or .pdf for best results.");
+        }
+
+        // ==========================================
+        // BINARY PARSERS & STREAM EXTRACTORS (FALLBACK)
+        // ==========================================
+
+        function extractTextFromBinaryDoc(buffer) {
             const bytes = new Uint8Array(buffer);
-            let text = '';
-            let currentRun = '';
+            
+            // Check if it's RTF
+            let rtfHeader = '';
+            for (let i = 0; i < Math.min(10, bytes.length); i++) rtfHeader += String.fromCharCode(bytes[i]);
+            if (rtfHeader.startsWith('{\\rtf')) {
+                let rtfText = '';
+                for (let i = 0; i < bytes.length; i++) rtfText += String.fromCharCode(bytes[i]);
+                return rtfText
+                    .replace(/\\par[d]?\b/g, '\n')
+                    .replace(/\\tab\b/g, '\t')
+                    .replace(/\\[a-zA-Z0-9\-]+ ?/g, '')
+                    .replace(/[{}]/g, '')
+                    .trim();
+            }
+
+            // Word 97-2004 binary format stores text in UTF-16LE (2 bytes per character: char + 0x00)
+            let utf16Strings = [];
+            let currentUtf16 = '';
+            for (let i = 0; i < bytes.length - 1; i += 2) {
+                const lo = bytes[i];
+                const hi = bytes[i + 1];
+                if (hi === 0 && ((lo >= 32 && lo <= 126) || lo === 10 || lo === 13 || lo === 9)) {
+                    currentUtf16 += String.fromCharCode(lo);
+                } else if (hi === 0x20 && (lo >= 0x18 && lo <= 0x1d)) {
+                    // Smart quotes
+                    currentUtf16 += (lo <= 0x19) ? "'" : '"';
+                } else if (hi === 0x20 && (lo === 0x13 || lo === 0x14)) {
+                    // Em / en dash
+                    currentUtf16 += '-';
+                } else if (hi === 0 && lo >= 160 && lo <= 255) {
+                    currentUtf16 += String.fromCharCode(lo);
+                } else {
+                    if (currentUtf16.trim().length >= 4) {
+                        utf16Strings.push(currentUtf16.trim());
+                    }
+                    currentUtf16 = '';
+                }
+            }
+            if (currentUtf16.trim().length >= 4) utf16Strings.push(currentUtf16.trim());
+
+            // ASCII / UTF-8 text runs
+            let asciiStrings = [];
+            let currentAscii = '';
             for (let i = 0; i < bytes.length; i++) {
                 const b = bytes[i];
-                if ((b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9) {
-                    currentRun += String.fromCharCode(b);
+                if ((b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9 || (b >= 160 && b <= 255)) {
+                    currentAscii += String.fromCharCode(b);
                 } else {
-                    if (currentRun.length > 4) {
-                        text += currentRun + ' ';
+                    if (currentAscii.trim().length >= 4) {
+                        asciiStrings.push(currentAscii.trim());
                     }
-                    currentRun = '';
+                    currentAscii = '';
                 }
             }
-            if (currentRun.length > 4) text += currentRun;
-            
-            if (text.trim().length < 50) {
-                throw new Error("Legacy binary .doc file could not be parsed cleanly. Please save as .docx or .pdf for best results.");
+            if (currentAscii.trim().length >= 4) asciiStrings.push(currentAscii.trim());
+
+            const utf16Total = utf16Strings.join(' ');
+            const asciiTotal = asciiStrings.join(' ');
+
+            const best = utf16Total.length >= asciiTotal.length ? utf16Total : asciiTotal;
+            return best
+                .replace(/CompObj|SummaryInformation|DocumentSummaryInformation|WordDocument|Normal\.dotm|Microsoft Word Document/gi, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function extractTextFromPDFStreams(buffer) {
+            const bytes = new Uint8Array(buffer);
+            let raw = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, i + chunkSize);
+                raw += String.fromCharCode.apply(null, chunk);
             }
-            return text.replace(/\s+/g, ' ').trim();
+
+            let textBlocks = [];
+            
+            // String literals: (Text) Tj or ' or "
+            const tjRegex = /\(([^)]+)\)\s*(?:Tj|'|")/g;
+            let match;
+            let currentBlock = [];
+            while ((match = tjRegex.exec(raw)) !== null) {
+                const clean = match[1]
+                    .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+                    .replace(/\\[nrtbf\\()]/g, m => ({'\\n':'\n','\\r':'\r','\\t':'\t','\\b':'\b','\\f':'\f','\\\\':'\\','\\(':'(','\\)':')'}[m] || m))
+                    .trim();
+                if (clean.length > 0) currentBlock.push(clean);
+                if (currentBlock.length >= 20) {
+                    textBlocks.push(currentBlock.join(' '));
+                    currentBlock = [];
+                }
+            }
+            if (currentBlock.length > 0) textBlocks.push(currentBlock.join(' '));
+
+            // Text arrays: [(Text) -10 (More)] TJ
+            const arrayRegex = /\[([^\]]+)\]\s*TJ/g;
+            while ((match = arrayRegex.exec(raw)) !== null) {
+                const inner = match[1];
+                const innerMatches = inner.match(/\(([^)]+)\)/g);
+                if (innerMatches) {
+                    const arrText = innerMatches.map(m => m.slice(1, -1)).join('').trim();
+                    if (arrText.length > 0) textBlocks.push(arrText);
+                }
+            }
+
+            return textBlocks.join('\n\n').replace(/\s+/g, ' ').trim();
         }
 
         // ==========================================
@@ -1439,6 +1616,14 @@
                         </div>
                     </div>
 
+                    <!-- Hidden File Input -->
+                    <input id="file-input-${agent.id}" 
+                           type="file" 
+                           class="hidden" 
+                           accept=".pdf,.docx,.doc,.txt,.md,.csv,.PDF,.DOCX,.DOC,.TXT,.MD" 
+                           onclick="event.stopPropagation()"
+                           onchange="handleFileInputChange(event, '${agent.id}')">
+
                     <!-- Enhanced File Upload Dropzone (Supports PDF, DOC, DOCX, TXT, MD, CSV) -->
                     <div id="dropzone-${agent.id}" 
                          ondragover="handleDragOver(event)" 
@@ -1477,8 +1662,6 @@
                             <p class="text-xs font-semibold text-accent-purple" id="upload-status-text-${agent.id}">Extracting document content...</p>
                             <p class="text-[10px] text-slate-400 mt-1">Please wait while the text is processed locally</p>
                         </div>
-
-                        <input id="file-input-${agent.id}" type="file" class="hidden" accept=".pdf,.docx,.doc,.txt,.md,.csv" onchange="handleFileInputChange(event, '${agent.id}')" onclick="event.stopPropagation()">
                     </div>
 
                     <!-- Text Area -->
@@ -1796,6 +1979,14 @@
                             </div>
                         </div>
 
+                        <!-- Hidden File Input for Correction -->
+                        <input type="file" 
+                               id="file-input-correction" 
+                               class="hidden" 
+                               accept=".pdf,.docx,.doc,.txt,.md,.csv,.PDF,.DOCX,.DOC,.TXT,.MD" 
+                               onclick="event.stopPropagation()"
+                               onchange="handleFileInputChange(event, 'correction')">
+
                         <!-- Dropzone for Correction File (PDF, DOCX, DOC, TXT, MD) -->
                         <div id="dropzone-correction" 
                              ondragover="handleDragOver(event)" 
@@ -1833,8 +2024,6 @@
                                 </p>
                                 <p class="text-[10px] text-slate-400">100% Client-Side Privacy Extraction</p>
                             </div>
-
-                            <input type="file" id="file-input-correction" class="hidden" accept=".pdf,.docx,.doc,.txt,.md,.csv" onchange="handleFileInputChange(event, 'correction')">
                         </div>
 
                         <!-- Editable Textarea for Correction Instructions -->
@@ -2235,6 +2424,14 @@
                             </div>
                         </div>
 
+                        <!-- Hidden File Input for Rephraser -->
+                        <input type="file" 
+                               id="file-input-rephraser" 
+                               class="hidden" 
+                               accept=".docx,.doc,.pdf,.txt,.md,.DOCX,.DOC,.PDF,.TXT,.MD" 
+                               onclick="event.stopPropagation()"
+                               onchange="handleFileInputChange(event, 'rephraser')">
+
                         <!-- Dropzone for DOCX, DOC, MD, PDF, TXT -->
                         <div id="dropzone-rephraser" 
                              class="border-2 border-dashed border-dark-600 hover:border-indigo-500 rounded-xl p-4 bg-dark-900/50 hover:bg-dark-900/90 transition-all cursor-pointer text-center relative group"
@@ -2242,13 +2439,8 @@
                              ondragleave="handleDragLeave(event)"
                              ondrop="handleFileDrop(event, 'rephraser')"
                              onclick="document.getElementById('file-input-rephraser').click()">
-                            <input type="file" 
-                                   id="file-input-rephraser" 
-                                   class="hidden" 
-                                   accept=".docx,.doc,.pdf,.txt,.md" 
-                                   onchange="handleFileInputChange(event, 'rephraser')">
                             
-                            <div id="upload-idle-rephraser" class="flex flex-col sm:flex-row items-center justify-center gap-3 text-slate-400 group-hover:text-slate-300">
+                            <div id="upload-idle-rephraser" class="flex flex-col sm:flex-row items-center justify-center gap-3 text-slate-400 group-hover:text-slate-300 pointer-events-none">
                                 <div class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center border border-dark-700 group-hover:border-indigo-500/50 text-indigo-400 transition-colors">
                                     <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
                                 </div>
@@ -2258,7 +2450,7 @@
                                 </div>
                             </div>
 
-                            <div id="upload-loading-rephraser" class="hidden flex items-center justify-center gap-3 text-indigo-400 py-1">
+                            <div id="upload-loading-rephraser" class="hidden flex items-center justify-center gap-3 text-indigo-400 py-1 pointer-events-none">
                                 <div class="loader border-t-indigo-400"></div>
                                 <span id="upload-status-text-rephraser" class="text-xs font-semibold">Extracting document contents...</span>
                             </div>
