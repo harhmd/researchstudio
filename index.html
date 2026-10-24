@@ -658,8 +658,8 @@
                     text: '',
                     fileName: '',
                     output: '',
-                    lengthMode: 'less50', // 'less50', 'exact', 'more50', 'custom'
-                    customPercent: -50,
+                    lengthMode: 'exact', // 'less50', 'exact', 'more100', 'more300', 'more1000', 'custom'
+                    customPercent: 0,
                     status: 'Pending',
                     isRunning: false,
                     stats: {
@@ -924,7 +924,11 @@
         async function executeRawGeminiCall(apiUrl, systemInstruction, userPrompt, keyObj) {
             const payload = {
                 contents: [{ parts: [{ text: userPrompt }] }],
-                systemInstruction: { parts: [{ text: systemInstruction }] }
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                generationConfig: {
+                    maxOutputTokens: 8192,
+                    temperature: 0.7
+                }
             };
 
             const response = await fetch(apiUrl, {
@@ -2061,34 +2065,30 @@
         // REPHRASER STUDIO: LENGTH CONTROL & TURNITIN HUMANIZER
         // ==========================================
 
+        function getRephraserTargetEstimate(words, customPercent) {
+            if (!words) return 'Paste text or upload file to project target words';
+            const mult = 1 + (customPercent / 100);
+            const target = Math.max(20, Math.round(words * mult));
+            const minW = Math.round(target * 0.92);
+            const maxW = Math.round(target * 1.08);
+            if (customPercent < 0) {
+                return `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (${Math.abs(customPercent)}% reduction)`;
+            } else if (customPercent === 0) {
+                return `Projected Target: ~${Math.round(words * 0.95).toLocaleString()} - ${Math.round(words * 1.05).toLocaleString()} words (≈ Balanced 1:1 rejuvenation)`;
+            } else {
+                return `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ +${customPercent}% expansion / ${mult.toFixed(1)}x length)`;
+            }
+        }
+
         function renderRephraserWorkspace(container) {
             const rep = state.data.rephraser;
             const repWords = rep.text ? rep.text.trim().split(/\s+/).length : 0;
             const isRunning = rep.isRunning;
             const hasOutput = !!rep.output;
-            const lengthMode = rep.lengthMode || 'less50';
-            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
 
             // Target word estimation calculation
-            let targetEstimateText = '';
-            if (repWords === 0) {
-                targetEstimateText = 'Paste text or upload file to project target words';
-            } else if (lengthMode === 'less50') {
-                const minW = Math.round(repWords * 0.55);
-                const maxW = Math.round(repWords * 0.75);
-                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ -35% to -50% reduction)`;
-            } else if (lengthMode === 'exact') {
-                const minW = Math.round(repWords * 0.95);
-                const maxW = Math.round(repWords * 1.05);
-                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ same length / 100%)`;
-            } else if (lengthMode === 'more50') {
-                const minW = Math.round(repWords * 1.35);
-                const maxW = Math.round(repWords * 1.55);
-                targetEstimateText = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ +35% to +55% expansion)`;
-            } else {
-                const targetW = Math.round(repWords * (1 + customPercent / 100));
-                targetEstimateText = `Projected Target: ~${targetW.toLocaleString()} words (${customPercent > 0 ? '+' : ''}${customPercent}%)`;
-            }
+            const targetEstimateText = getRephraserTargetEstimate(repWords, customPercent);
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -2102,7 +2102,7 @@
                                 </div>
                                 <div>
                                     <h3 class="text-2xl font-bold text-white tracking-tight">PhD Thesis Rephraser & Humanizer</h3>
-                                    <p class="text-xs text-slate-400">Transform manuscript length (-50% to +50%), eliminate AI artifacts, and ensure Turnitin (&lt;20% Plag, &lt;10% AI) compliance.</p>
+                                    <p class="text-xs text-slate-400">Transform manuscript length (-50% to +1000%), eliminate AI artifacts, expand doctoral arguments, and ensure Turnitin (&lt;20% Plag, &lt;10% AI) compliance.</p>
                                 </div>
                             </div>
                         </div>
@@ -2212,98 +2212,176 @@
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <span class="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">2</span>
-                                <h4 class="text-sm font-bold text-white uppercase tracking-wider">Word Length & Transformation Mode</h4>
+                                <h4 class="text-sm font-bold text-white uppercase tracking-wider">Word Length & Transformation Mode (-50% to +1000%)</h4>
                             </div>
                             <span class="text-xs text-indigo-300 font-semibold bg-indigo-950/70 border border-indigo-700/50 px-3 py-1 rounded-full flex items-center gap-1.5" id="rephraser-target-badge">
                                 <i class="fa-solid fa-bullseye text-indigo-400"></i> ${targetEstimateText}
                             </span>
                         </div>
 
-                        <!-- 3 Preset Cards -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                        <!-- 5 Strategic Preset Cards -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                             <!-- Card 1: 50% Less -->
-                            <div onclick="setRephraserMode('less50')" 
-                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'less50' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                            <div onclick="setRephraserPercent(-50)" 
+                                 class="p-3.5 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${customPercent === -50 ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
                                 <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'less50' ? 'text-indigo-300' : 'text-slate-300'}">
-                                            <i class="fa-solid fa-arrow-down-short-wide text-rose-400"></i> 50% Less (Condense)
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${customPercent === -50 ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-arrow-down-short-wide text-rose-400"></i> -50% Less
                                         </span>
-                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-rose-950/70 border border-rose-800/50 text-rose-300">-50% Words</span>
+                                        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-950/70 border border-rose-800/50 text-rose-300">0.5x</span>
                                     </div>
-                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
-                                        Densely synthesizes text, cutting circular academic padding while preserving every theoretical construct, empirical finding, and citation.
+                                    <p class="text-[11px] text-slate-400 leading-snug mb-2">
+                                        Densely synthesizes text, cutting circular padding while preserving core constructs and citations.
                                     </p>
                                 </div>
-                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
-                                    <span>E.g., 1,000 words:</span>
-                                    <strong class="text-indigo-300">~600 - 750 words</strong>
+                                <div class="text-[10px] font-mono text-slate-400 border-t border-dark-750 pt-1.5 flex items-center justify-between">
+                                    <span>E.g. 1k words:</span>
+                                    <strong class="text-rose-300">~500 - 700w</strong>
                                 </div>
                             </div>
 
-                            <!-- Card 2: Balanced (~100%) -->
-                            <div onclick="setRephraserMode('exact')" 
-                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'exact' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                            <!-- Card 2: Balanced (~100% / 0%) -->
+                            <div onclick="setRephraserPercent(0)" 
+                                 class="p-3.5 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${customPercent === 0 ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
                                 <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'exact' ? 'text-indigo-300' : 'text-slate-300'}">
-                                            <i class="fa-solid fa-scale-balanced text-teal-400"></i> Balanced (~Same Length)
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${customPercent === 0 ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-scale-balanced text-teal-400"></i> Balanced (1x)
                                         </span>
-                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-teal-950/70 border border-teal-800/50 text-teal-300">~100% Words</span>
+                                        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-teal-950/70 border border-teal-800/50 text-teal-300">1.0x</span>
                                     </div>
-                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
-                                        Complete syntactic and lexical rejuvenation preserving original length, pacing, and chapter balance for Turnitin anti-plagiarism.
+                                    <p class="text-[11px] text-slate-400 leading-snug mb-2">
+                                        Complete syntactic & lexical rejuvenation preserving original length and chapter balance.
                                     </p>
                                 </div>
-                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
-                                    <span>E.g., 1,000 words:</span>
-                                    <strong class="text-teal-300">~950 - 1,050 words</strong>
+                                <div class="text-[10px] font-mono text-slate-400 border-t border-dark-750 pt-1.5 flex items-center justify-between">
+                                    <span>E.g. 1k words:</span>
+                                    <strong class="text-teal-300">~950 - 1,050w</strong>
                                 </div>
                             </div>
 
-                            <!-- Card 3: 50% More -->
-                            <div onclick="setRephraserMode('more50')" 
-                                 class="p-4 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${lengthMode === 'more50' ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                            <!-- Card 3: +100% Double (2x) -->
+                            <div onclick="setRephraserPercent(100)" 
+                                 class="p-3.5 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${customPercent === 100 ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
                                 <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs font-bold flex items-center gap-1.5 ${lengthMode === 'more50' ? 'text-indigo-300' : 'text-slate-300'}">
-                                            <i class="fa-solid fa-arrow-up-wide-short text-emerald-400"></i> 50% More (Expand)
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${customPercent === 100 ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-arrow-up-right-dots text-emerald-400"></i> +100% (2x)
                                         </span>
-                                        <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/50 text-emerald-300">+50% Words</span>
+                                        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-950/70 border border-emerald-800/50 text-emerald-300">2.0x</span>
                                     </div>
-                                    <p class="text-[11px] text-slate-400 leading-relaxed mb-3">
-                                        Systematically elaborates on theoretical mechanisms, expands academic hedging, and substantiates arguments with deeper analytical nuance.
+                                    <p class="text-[11px] text-slate-400 leading-snug mb-2">
+                                        Doubles depth by elaborating theoretical mechanisms, adding comparison tables & literature dialogue.
                                     </p>
                                 </div>
-                                <div class="text-[11px] font-mono text-slate-400 border-t border-dark-750 pt-2 flex items-center justify-between">
-                                    <span>E.g., 1,000 words:</span>
-                                    <strong class="text-emerald-300">~1,400 - 1,600 words</strong>
+                                <div class="text-[10px] font-mono text-slate-400 border-t border-dark-750 pt-1.5 flex items-center justify-between">
+                                    <span>E.g. 1k words:</span>
+                                    <strong class="text-emerald-300">~1,900 - 2,200w</strong>
+                                </div>
+                            </div>
+
+                            <!-- Card 4: +300% In-Depth (4x) -->
+                            <div onclick="setRephraserPercent(300)" 
+                                 class="p-3.5 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${customPercent === 300 ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                                <div>
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${customPercent === 300 ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-chart-line text-blue-400"></i> +300% (4x)
+                                        </span>
+                                        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-blue-950/70 border border-blue-800/50 text-blue-300">4.0x</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 leading-snug mb-2">
+                                        Quadruples depth: adds psychometric criteria, latent variable definitions, and cross-paradigm synthesis.
+                                    </p>
+                                </div>
+                                <div class="text-[10px] font-mono text-slate-400 border-t border-dark-750 pt-1.5 flex items-center justify-between">
+                                    <span>E.g. 1k words:</span>
+                                    <strong class="text-blue-300">~3,700 - 4,300w</strong>
+                                </div>
+                            </div>
+
+                            <!-- Card 5: +1000% Master Treatise (11x) -->
+                            <div onclick="setRephraserPercent(1000)" 
+                                 class="p-3.5 rounded-xl border transition-all cursor-pointer text-left relative flex flex-col justify-between ${customPercent === 1000 ? 'bg-indigo-900/30 border-indigo-500 shadow-lg shadow-indigo-500/10' : 'bg-dark-900/60 border-dark-700 hover:border-dark-600'}">
+                                <div>
+                                    <div class="flex items-center justify-between mb-1.5">
+                                        <span class="text-xs font-bold flex items-center gap-1.5 ${customPercent === 1000 ? 'text-indigo-300' : 'text-slate-300'}">
+                                            <i class="fa-solid fa-book-atlas text-purple-400"></i> +1000% (11x)
+                                        </span>
+                                        <span class="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-950/70 border border-purple-800/50 text-purple-300">11.0x</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 leading-snug mb-2">
+                                        Exhaustive multi-chapter monograph: complete epistemology, AVE/HTMT proofs, tables, and regional policy.
+                                    </p>
+                                </div>
+                                <div class="text-[10px] font-mono text-slate-400 border-t border-dark-750 pt-1.5 flex items-center justify-between">
+                                    <span>E.g. 1k words:</span>
+                                    <strong class="text-purple-300">~10,000 - 11,500w</strong>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Fine-Tune Slider Container -->
-                        <div class="bg-dark-900/80 border border-dark-700 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <!-- Quick Preset Jump Bar -->
+                        <div class="flex flex-wrap items-center gap-1.5 bg-dark-900/70 border border-dark-750 rounded-xl p-2.5">
+                            <span class="text-[11px] text-slate-400 font-semibold mr-1 flex items-center gap-1">
+                                <i class="fa-solid fa-bolt text-amber-400"></i> Quick Presets:
+                            </span>
+                            ${[
+                                { val: -50, label: '-50% (0.5x)', cls: 'text-rose-300 hover:bg-rose-950/50 hover:border-rose-600/40' },
+                                { val: 0, label: '0% Exact (1x)', cls: 'text-teal-300 hover:bg-teal-950/50 hover:border-teal-600/40' },
+                                { val: 50, label: '+50% (1.5x)', cls: 'text-emerald-300 hover:bg-emerald-950/50 hover:border-emerald-600/40' },
+                                { val: 100, label: '+100% (2x)', cls: 'text-emerald-300 hover:bg-emerald-950/50 hover:border-emerald-600/40' },
+                                { val: 200, label: '+200% (3x)', cls: 'text-cyan-300 hover:bg-cyan-950/50 hover:border-cyan-600/40' },
+                                { val: 300, label: '+300% (4x)', cls: 'text-blue-300 hover:bg-blue-950/50 hover:border-blue-600/40' },
+                                { val: 500, label: '+500% (6x)', cls: 'text-indigo-300 hover:bg-indigo-950/50 hover:border-indigo-600/40' },
+                                { val: 750, label: '+750% (8.5x)', cls: 'text-purple-300 hover:bg-purple-950/50 hover:border-purple-600/40' },
+                                { val: 1000, label: '+1000% Max (11x)', cls: 'text-fuchsia-300 hover:bg-fuchsia-950/50 hover:border-fuchsia-600/40 font-bold' }
+                            ].map(p => `
+                                <button type="button" 
+                                        onclick="setRephraserPercent(${p.val})" 
+                                        class="text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${customPercent === p.val ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow-sm' : `bg-dark-800 border-dark-700 ${p.cls}`}">
+                                    ${p.label}
+                                </button>
+                            `).join('')}
+                        </div>
+
+                        <!-- Fine-Tune Slider & Direct Input Container -->
+                        <div class="bg-dark-900/80 border border-dark-700 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
                             <div class="flex items-center gap-3">
-                                <i class="fa-solid fa-sliders text-indigo-400"></i>
+                                <i class="fa-solid fa-sliders text-indigo-400 text-lg"></i>
                                 <div>
-                                    <span class="text-xs font-semibold text-slate-200 block">Fine-Tune Length Ratio</span>
-                                    <span class="text-[11px] text-slate-500">Adjust anywhere from -50% to +50% word count transformation</span>
+                                    <span class="text-xs font-semibold text-slate-200 block">Fine-Tune Length Ratio (-50% to +1000%)</span>
+                                    <span class="text-[11px] text-slate-500">Slide or enter exact percentage (up to 11x original length)</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-3 w-full sm:w-80">
+                            <div class="flex items-center gap-3 w-full md:w-auto flex-1 max-w-xl justify-end">
                                 <span class="text-[11px] font-mono text-rose-400 font-bold">-50%</span>
                                 <input type="range" 
                                        min="-50" 
-                                       max="50" 
-                                       step="5" 
+                                       max="1000" 
+                                       step="25" 
                                        value="${customPercent}" 
                                        id="rephraser-slider"
                                        class="w-full accent-indigo-500 cursor-pointer"
                                        oninput="handleRephraserSliderChange(this.value)">
-                                <span class="text-[11px] font-mono text-emerald-400 font-bold">+50%</span>
-                                <span id="rephraser-slider-val" class="text-xs font-mono font-bold bg-indigo-900/60 text-indigo-200 border border-indigo-700/40 px-2.5 py-1 rounded min-w-[56px] text-center">
-                                    ${customPercent > 0 ? '+' : ''}${customPercent}%
+                                <span class="text-[11px] font-mono text-purple-400 font-bold">+1000%</span>
+                                
+                                <!-- Direct Number Input Box -->
+                                <div class="flex items-center gap-1 bg-dark-800 border border-dark-600 rounded-lg px-2 py-1 shadow-inner">
+                                    <input type="number" 
+                                           id="rephraser-num-input" 
+                                           min="-50" 
+                                           max="1000" 
+                                           step="10" 
+                                           value="${customPercent}" 
+                                           class="w-16 bg-transparent text-center font-mono text-xs font-bold text-indigo-300 focus:outline-none" 
+                                           oninput="handleRephraserNumberInput(this.value)">
+                                    <span class="text-xs text-slate-400 font-bold">%</span>
+                                </div>
+
+                                <span id="rephraser-slider-val" class="text-xs font-mono font-bold bg-indigo-900/60 text-indigo-200 border border-indigo-700/40 px-2.5 py-1 rounded min-w-[75px] text-center">
+                                    ${customPercent > 0 ? '+' : ''}${customPercent}% (${(1 + customPercent / 100).toFixed(1)}x)
                                 </span>
                             </div>
                         </div>
@@ -2430,27 +2508,8 @@
 
         function updateRephraserTargetEstimate(words) {
             const rep = state.data.rephraser;
-            const mode = rep.lengthMode || 'less50';
-            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
-            let text = '';
-            if (words === 0) {
-                text = 'Paste text or upload file to project target words';
-            } else if (mode === 'less50') {
-                const minW = Math.round(words * 0.55);
-                const maxW = Math.round(words * 0.75);
-                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ -35% to -50% reduction)`;
-            } else if (mode === 'exact') {
-                const minW = Math.round(words * 0.95);
-                const maxW = Math.round(words * 1.05);
-                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ same length / 100%)`;
-            } else if (mode === 'more50') {
-                const minW = Math.round(words * 1.35);
-                const maxW = Math.round(words * 1.55);
-                text = `Projected Target: ~${minW.toLocaleString()} - ${maxW.toLocaleString()} words (≈ +35% to +55% expansion)`;
-            } else {
-                const targetW = Math.round(words * (1 + customPercent / 100));
-                text = `Projected Target: ~${targetW.toLocaleString()} words (${customPercent > 0 ? '+' : ''}${customPercent}%)`;
-            }
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
+            const text = getRephraserTargetEstimate(words, customPercent);
 
             const badge = document.getElementById('rephraser-target-badge');
             if (badge) {
@@ -2458,21 +2517,43 @@
             }
         }
 
-        function setRephraserMode(mode) {
+        function setRephraserPercent(pct) {
             const rep = state.data.rephraser;
-            rep.lengthMode = mode;
-            if (mode === 'less50') rep.customPercent = -50;
-            else if (mode === 'exact') rep.customPercent = 0;
-            else if (mode === 'more50') rep.customPercent = 50;
+            rep.customPercent = parseInt(pct, 10);
+            if (rep.customPercent === -50) rep.lengthMode = 'less50';
+            else if (rep.customPercent === 0) rep.lengthMode = 'exact';
+            else if (rep.customPercent === 100) rep.lengthMode = 'more100';
+            else if (rep.customPercent === 300) rep.lengthMode = 'more300';
+            else if (rep.customPercent === 1000) rep.lengthMode = 'more1000';
+            else rep.lengthMode = 'custom';
 
             const slider = document.getElementById('rephraser-slider');
             if (slider) slider.value = rep.customPercent;
+            const numInput = document.getElementById('rephraser-num-input');
+            if (numInput) numInput.value = rep.customPercent;
             const sliderVal = document.getElementById('rephraser-slider-val');
-            if (sliderVal) sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}%`;
+            if (sliderVal) {
+                const mult = (1 + rep.customPercent / 100).toFixed(1);
+                sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}% (${mult}x)`;
+            }
+
+            const words = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+            updateRephraserTargetEstimate(words);
 
             if (state.activeTab === 'rephraser') {
                 renderWorkspace();
             }
+        }
+
+        function setRephraserMode(mode) {
+            if (mode === 'less50') setRephraserPercent(-50);
+            else if (mode === 'exact') setRephraserPercent(0);
+            else if (mode === 'more50') setRephraserPercent(50);
+            else if (mode === 'more100') setRephraserPercent(100);
+            else if (mode === 'more300') setRephraserPercent(300);
+            else if (mode === 'more500') setRephraserPercent(500);
+            else if (mode === 'more1000') setRephraserPercent(1000);
+            else setRephraserPercent(0);
         }
 
         function handleRephraserSliderChange(val) {
@@ -2480,11 +2561,47 @@
             rep.customPercent = parseInt(val, 10);
             if (rep.customPercent === -50) rep.lengthMode = 'less50';
             else if (rep.customPercent === 0) rep.lengthMode = 'exact';
-            else if (rep.customPercent === 50) rep.lengthMode = 'more50';
+            else if (rep.customPercent === 100) rep.lengthMode = 'more100';
+            else if (rep.customPercent === 300) rep.lengthMode = 'more300';
+            else if (rep.customPercent === 1000) rep.lengthMode = 'more1000';
             else rep.lengthMode = 'custom';
 
+            const numInput = document.getElementById('rephraser-num-input');
+            if (numInput) numInput.value = rep.customPercent;
+
             const sliderVal = document.getElementById('rephraser-slider-val');
-            if (sliderVal) sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}%`;
+            if (sliderVal) {
+                const mult = (1 + rep.customPercent / 100).toFixed(1);
+                sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}% (${mult}x)`;
+            }
+
+            const words = rep.text ? rep.text.trim().split(/\s+/).length : 0;
+            updateRephraserTargetEstimate(words);
+        }
+
+        function handleRephraserNumberInput(val) {
+            let num = parseInt(val, 10);
+            if (isNaN(num)) num = 0;
+            if (num < -50) num = -50;
+            if (num > 1000) num = 1000;
+
+            const rep = state.data.rephraser;
+            rep.customPercent = num;
+            if (rep.customPercent === -50) rep.lengthMode = 'less50';
+            else if (rep.customPercent === 0) rep.lengthMode = 'exact';
+            else if (rep.customPercent === 100) rep.lengthMode = 'more100';
+            else if (rep.customPercent === 300) rep.lengthMode = 'more300';
+            else if (rep.customPercent === 1000) rep.lengthMode = 'more1000';
+            else rep.lengthMode = 'custom';
+
+            const slider = document.getElementById('rephraser-slider');
+            if (slider) slider.value = rep.customPercent;
+
+            const sliderVal = document.getElementById('rephraser-slider-val');
+            if (sliderVal) {
+                const mult = (1 + rep.customPercent / 100).toFixed(1);
+                sliderVal.textContent = `${rep.customPercent > 0 ? '+' : ''}${rep.customPercent}% (${mult}x)`;
+            }
 
             const words = rep.text ? rep.text.trim().split(/\s+/).length : 0;
             updateRephraserTargetEstimate(words);
@@ -3654,6 +3771,22 @@ ${rtfBody}
         // REPHRASER EXECUTION & RICH EXPORT PIPELINE
         // ==========================================
 
+        function sanitizeRephraserOutput(text) {
+            if (!text) return '';
+            let clean = text.trim();
+            // Strip code fences if the entire output is wrapped in ```markdown ... ```
+            if (clean.startsWith('```markdown') && clean.endsWith('```')) {
+                clean = clean.substring(11, clean.length - 3).trim();
+            } else if (clean.startsWith('```') && clean.endsWith('```')) {
+                clean = clean.substring(3, clean.length - 3).trim();
+            }
+            // Strip conversational preambles
+            clean = clean.replace(/^(?:Here is (?:the|your) (?:rephrased|humanized|condensed|expanded) text:?|Below is (?:the|your) (?:rephrased|humanized) text:?|In response to your request,?\s*(?:here is|below is)[^:\n]*:?)\s*\n+/i, '');
+            // Strip conversational postambles
+            clean = clean.replace(/\n+\s*(?:Hope this helps!?|Let me know if you (?:need|require) (?:any )?(?:further )?(?:changes|adjustments)\.?|This (?:version|text) (?:complies|meets) (?:with )?Turnitin.*)$/i, '');
+            return clean;
+        }
+
         async function runRephraser() {
             const rep = state.data.rephraser;
             if (rep.isRunning) return;
@@ -3665,31 +3798,11 @@ ${rtfBody}
             }
 
             const origWords = text.split(/\s+/).length;
-            const mode = rep.lengthMode || 'less50';
-            const customPercent = rep.customPercent !== undefined ? rep.customPercent : -50;
-
-            let lengthDirective = '';
-            let targetDesc = '';
-            if (mode === 'less50') {
-                const targetMin = Math.round(origWords * 0.55);
-                const targetMax = Math.round(origWords * 0.75);
-                lengthDirective = `CONDENSE BY 50% LESS. Reduce word count from ${origWords} words down to approximately ${targetMin} to ${targetMax} words (deducting redundant padding while preserving all essential academic arguments, theoretical constructs, data, and citations).`;
-                targetDesc = `${targetMin}-${targetMax}`;
-            } else if (mode === 'exact') {
-                const targetMin = Math.round(origWords * 0.95);
-                const targetMax = Math.round(origWords * 1.05);
-                lengthDirective = `MAINTAIN BALANCED LENGTH (~100%). Keep word count approximately ${targetMin} to ${targetMax} words (approximately same length as original), executing thorough syntactic restructuring and vocabulary replacement.`;
-                targetDesc = `${targetMin}-${targetMax}`;
-            } else if (mode === 'more50') {
-                const targetMin = Math.round(origWords * 1.35);
-                const targetMax = Math.round(origWords * 1.55);
-                lengthDirective = `EXPAND BY 50% MORE. Expand word count from ${origWords} words up to approximately ${targetMin} to ${targetMax} words (elaborating on theoretical mechanisms, expanding analytical depth, and providing extended academic substantiation).`;
-                targetDesc = `${targetMin}-${targetMax}`;
-            } else {
-                const targetExact = Math.round(origWords * (1 + customPercent / 100));
-                lengthDirective = `TRANSFORM LENGTH BY ${customPercent > 0 ? '+' : ''}${customPercent}%. Target approximately ${targetExact} words.`;
-                targetDesc = `~${targetExact}`;
-            }
+            const customPercent = rep.customPercent !== undefined ? rep.customPercent : 0;
+            const multiplier = 1 + (customPercent / 100);
+            const targetExact = Math.max(20, Math.round(origWords * multiplier));
+            const targetMin = Math.round(targetExact * 0.92);
+            const targetMax = Math.round(targetExact * 1.08);
 
             rep.isRunning = true;
             renderSidebar();
@@ -3697,7 +3810,25 @@ ${rtfBody}
 
             showToast("🚀 Humanizing manuscript and adjusting word count...", "info");
 
-            const systemPrompt = `You are the PhD Thesis Rephraser & Master Academic Humanizer.
+            const isMultiStage = targetExact > 3500;
+
+            try {
+                let cleanOutput = '';
+
+                if (!isMultiStage) {
+                    // Single comprehensive call (up to ~3,500 words)
+                    let lengthDirective = '';
+                    if (customPercent < 0) {
+                        lengthDirective = `CONDENSE BY ${Math.abs(customPercent)}% LESS. Reduce word count from ${origWords} words down to approximately ${targetMin} to ${targetMax} words (deducting circular padding while rigorously preserving all core theoretical constructs, empirical evidence, and citations).`;
+                    } else if (customPercent === 0) {
+                        lengthDirective = `MAINTAIN BALANCED LENGTH (1.0x / 0%). Keep word count approximately ${targetMin} to ${targetMax} words (preserving original length balance), executing thorough syntactic restructuring, burstiness injection, and lexical rejuvenation.`;
+                    } else if (customPercent <= 150) {
+                        lengthDirective = `EXPAND BY +${customPercent}% MORE (${multiplier.toFixed(1)}x original length). Expand word count from ${origWords} words up to approximately ${targetMin} to ${targetMax} words. Elaborate on theoretical mechanisms, enrich literature dialogue, add structured Markdown comparison tables, and provide extended academic substantiation.`;
+                    } else {
+                        lengthDirective = `DEEP DOCTORAL MONOGRAPH EXPANSION BY +${customPercent}% MORE (${multiplier.toFixed(1)}x original length). Substantially expand word count from ${origWords} words up to approximately ${targetMin} to ${targetMax} words through epistemological grounding, granular latent construct operationalization with Markdown tables, and comparative literature synthesis.`;
+                    }
+
+                    const systemPrompt = `You are the PhD Thesis Rephraser & Master Academic Humanizer.
 Your mission is to perform a comprehensive doctoral-level rephrasing of the provided academic manuscript, strictly adhering to the requested word length transformation while guaranteeing superior academic cadence, narrative flow, and complete compliance with Turnitin and AI-detection thresholds.
 
 TARGET AUDIT BENCHMARKS:
@@ -3708,35 +3839,92 @@ TARGET AUDIT BENCHMARKS:
 MANDATORY LENGTH TRANSFORMATION REQUIREMENT:
 The user has requested the following word count directive:
 TARGET DIRECTIVE: ${lengthDirective}
+TARGET WORD COUNT RANGE: Approximately ${targetMin} to ${targetMax} words (Exact Target: ${targetExact} words).
 
 CRITICAL HUMANIZATION & AI BYPASS RULES:
-- High Syntactic Burstiness: Intentionally vary sentence lengths from short, punchy 8-12 word claims to sophisticated 25-40 word multi-clause analytical explanations containing subordinate clauses, participial phrases, and appositives.
+- High Syntactic Burstiness: Intentionally vary sentence lengths from short, punchy 8-12 word claims to sophisticated 25-45 word multi-clause analytical explanations containing subordinate clauses, participial phrases, and appositives.
 - Vocabulary & Perplexity: NEVER use generic, stereotypical generative AI words or transitional formulas.
-  BANNED WORDS: "delve", "pivotal", "tapestry", "testament", "in conclusion", "moreover", "furthermore", "it is noteworthy that", "it is crucial to remember", "a testament to", "beacon", "fosters", "crucial role", "navigating", "ever-evolving".
+  BANNED WORDS: "delve", "pivotal", "tapestry", "testament", "in conclusion", "moreover", "furthermore", "it is noteworthy that", "it is crucial to remember", "a testament to", "beacon", "fosters", "crucial role", "navigating", "ever-evolving", "game-changer", "paradigm shift".
   USE: Authentic doctoral hedging and disciplinary vocabulary ("The empirical evidence suggests", "Contradicting previous assumptions", "This discrepancy arises from", "Consequently", "Empirically observed", "Structural path coefficients").
 - REMOVE ALL AI MARKDOWN / AI INDICATORS:
-  - Do NOT write ANY conversational preamble, introduction, or conversational commentary (e.g. "Here is the rephrased text", "Certainly! Below is...", "I have condensed the text").
+  - Do NOT write ANY conversational preamble, introduction, or commentary (e.g. "Here is the rephrased text", "Certainly! Below is...").
   - Do NOT write conversational postscripts (e.g. "Let me know if you need more changes").
   - Begin DIRECTLY with the academic title or chapter heading.
-- STRUCTURED TABLES: If the source contains tables, comparison metrics, or statistical parameters, render them using clean Markdown tables (| Col 1 | Col 2 |) so that they convert to native Word and PDF tables. Never use ASCII art or plain text for tables.
-`;
+- STRUCTURED TABLES: If the text discusses constructs, statistical variables, or comparative paradigms, render them using clean Markdown tables (| Col 1 | Col 2 |) so they convert into native Word and PDF tables. Never use ASCII art or plain text for tables.`;
 
-            const userPrompt = `ORIGINAL MANUSCRIPT EXCERPT (${origWords} words):
+                    const userPrompt = `ORIGINAL MANUSCRIPT EXCERPT (${origWords} words):
 ---
 ${text.substring(0, 35000)}
 ---
 
-LENGTH REQUIREMENT: ${lengthDirective} (Target: approximately ${targetDesc} words).
+LENGTH REQUIREMENT: ${lengthDirective}
+Target: approximately ${targetMin} to ${targetMax} words (Exact Target: ${targetExact} words).
 
-Please provide the completely rephrased, humanized academic text ready for doctoral submission. Comply strictly with Turnitin plagiarism < 20% and AI content < 10%. Output only the academic manuscript.`;
+Please provide the completely rephrased, humanized academic manuscript ready for doctoral submission. Comply strictly with Turnitin plagiarism < 20% and AI content < 10%. Output only the academic text.`;
 
-            try {
-                const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
-                
-                // Client-side sanitizer: strip any accidental AI preamble or postamble
-                let cleanOutput = responseText.trim();
-                cleanOutput = cleanOutput.replace(/^(?:Here is (?:the|your) (?:rephrased|humanized|condensed|expanded) text:?|Below is (?:the|your) (?:rephrased|humanized) text:?)\s*\n+/i, '');
-                cleanOutput = cleanOutput.replace(/\n+\s*(?:Hope this helps!?|Let me know if you (?:need|require) (?:any )?(?:further )?(?:changes|adjustments)\.?|This (?:version|text) (?:complies|meets) (?:with )?Turnitin.*)$/i, '');
+                    const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
+                    cleanOutput = sanitizeRephraserOutput(responseText);
+                } else {
+                    // Multi-stage progressive expansion for massive lengths (> 3,500 words, e.g. +300% to +1000%)
+                    const part1Target = Math.round(targetExact * 0.52);
+                    const part2Target = Math.round(targetExact * 0.48);
+
+                    showToast(`🚀 Executing Pass 1 of 2: Deep Epistemology & Theoretical Architecture (~${part1Target.toLocaleString()} words)...`, "info");
+
+                    const systemPromptPass1 = `You are the PhD Thesis Rephraser & Master Academic Humanizer (Pass 1 of 2).
+Your task is to craft Part I of a massive doctoral monograph expansion (+${customPercent}%, ${multiplier.toFixed(1)}x expansion).
+
+TARGET FOR PART 1: Approximately ${part1Target} words.
+MANDATORY FOCUS FOR PART 1:
+1. Comprehensive Problem Articulation, Ontological Grounding & Theoretical Epistemology (e.g. Positivist vs. Critical Realist paradigms).
+2. Granular Conceptual Taxonomies & Latent Construct Operationalization. Include at least one comprehensive Markdown comparison table (| Construct | Dimension | Operational Indicator | Seminal Citations |).
+3. Theoretical Framework Synthesis & Structural Hypotheses Formulation (e.g. RBV, Dynamic Capabilities, Institutional Theory, TAM3/UTAUT2).
+
+AUDIT BENCHMARKS: Turnitin Plagiarism < 20% (target < 15%), AI Detection < 10% (target < 8%).
+AVOID BANNED AI CLICHES: "delve", "pivotal", "tapestry", "testament", "moreover", "in conclusion", "ever-evolving", "beacon", "game-changer".
+DO NOT output any conversational preamble or markdown code fence. Begin directly with the Academic Title or Chapter 1 Heading.`;
+
+                    const userPromptPass1 = `SOURCE MANUSCRIPT (${origWords} words):
+---
+${text.substring(0, 35000)}
+---
+
+Generate Part I of the expanded doctoral treatise. Target length: approximately ${part1Target} words. Output only the academic manuscript.`;
+
+                    const pass1Response = await fetchGeminiWithRotation(systemPromptPass1, userPromptPass1);
+                    const cleanPass1 = sanitizeRephraserOutput(pass1Response);
+
+                    showToast(`🚀 Executing Pass 2 of 2: Methodological Proofs, Empirical Synthesis & Policy Actionability (~${part2Target.toLocaleString()} words)...`, "info");
+
+                    const systemPromptPass2 = `You are the PhD Thesis Rephraser & Master Academic Humanizer (Pass 2 of 2).
+Your task is to craft Part II of the massive doctoral monograph expansion (+${customPercent}%, ${multiplier.toFixed(1)}x expansion), continuing directly from Part I with zero redundancy and perfect narrative cohesion.
+
+TARGET FOR PART 2: Approximately ${part2Target} words.
+MANDATORY FOCUS FOR PART 2:
+1. Methodological Operationalization & Psychometric Rigor (Cronbach's alpha > 0.70, Composite Reliability > 0.70, AVE > 0.50, HTMT < 0.85, PLS-SEM bootstrapping). Include a structured Markdown measurement model table.
+2. Triangulated Empirical Synthesis & Comparative Literature Dialectic addressing empirical divergences and boundary conditions.
+3. Contextualized Policy Governance, Practical Implications (e.g. Regional Digital Blueprint DAN 2.0) & Future Research Horizons.
+4. Concluding Epistemological Synthesis.
+
+AUDIT BENCHMARKS: Turnitin Plagiarism < 20% (target < 15%), AI Detection < 10% (target < 8%).
+AVOID BANNED AI CLICHES: "delve", "pivotal", "tapestry", "testament", "moreover", "in conclusion", "ever-evolving", "beacon", "game-changer".
+DO NOT output any conversational preamble or markdown code fence. Continue directly with Chapter/Section headings.`;
+
+                    const userPromptPass2 = `SOURCE MANUSCRIPT:
+---
+${text.substring(0, 35000)}
+---
+
+SUMMARY OF PART 1 COMPLETED:
+Foundational theory, epistemological paradigms, construct taxonomies, and structural hypotheses have been established.
+
+Generate Part II to complete the master treatise. Target length: approximately ${part2Target} words. Output only the academic manuscript.`;
+
+                    const pass2Response = await fetchGeminiWithRotation(systemPromptPass2, userPromptPass2);
+                    const cleanPass2 = sanitizeRephraserOutput(pass2Response);
+
+                    cleanOutput = cleanPass1 + "\n\n" + cleanPass2;
+                }
 
                 rep.output = cleanOutput;
                 rep.status = 'Approved';
@@ -3750,9 +3938,9 @@ Please provide the completely rephrased, humanized academic text ready for docto
                     changePercent: changePct
                 };
 
-                showToast(`🎉 Rephrase complete: <strong>${origWords} ➔ ${rephrasedWords} words</strong> (${changePct > 0 ? '+' : ''}${changePct}%)! Turnitin & AI-safe.`, "success");
+                showToast(`🎉 Rephrase complete: <strong>${origWords.toLocaleString()} ➔ ${rephrasedWords.toLocaleString()} words</strong> (${changePct > 0 ? '+' : ''}${changePct}%)! Turnitin & AI-safe.`, "success");
             } catch(e) {
-                rep.output = `**Rephrase failed:**\n\n${e.message}\n\n*Please verify your Gemini API key pool.*`;
+                rep.output = `**Rephrase failed:**\n\n${e.message}\n\n*Please verify your Gemini API key pool in Settings.*`;
                 rep.isRunning = false;
                 showToast(`Rephrase failed: ${e.message}`, "error");
             }
