@@ -638,7 +638,14 @@
                 ch3: { text: '', output: '', status: 'Pending', isRunning: false },
                 ch4: { text: '', output: '', status: 'Pending', isRunning: false },
                 ch5: { text: '', output: '', status: 'Pending', isRunning: false },
-                coherence: { text: '', output: '', status: 'Pending', isRunning: false },
+                coherence: { 
+                    text: '', 
+                    output: '', 
+                    status: 'Pending', 
+                    isRunning: false,
+                    parsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '', matrix: '' },
+                    evaluatedChapters: []
+                },
                 tribunal: { output: '', status: 'Pending', isRunning: false },
                 correction: {
                     text: '',
@@ -1637,6 +1644,9 @@
 
             if (activeResultTab === 'all') {
                 activeContent = stageOutput;
+            } else if (activeResultTab === 'coherence') {
+                activeContent = state.data.coherence.output || (state.data.coherence.isRunning ? 'Coherence Master is currently auditing cross-chapter consistency in the background...' : 'No Coherence Master output yet. Run any chapter review to trigger automatic coherence auditing, or run manually.');
+                activeTitle = 'Coherence Master: Cross-Chapter Golden Thread Audit & Chapter-by-Chapter Required Changes';
             } else if (activeResultTab === 'ch1') {
                 activeContent = parsed.ch1 || (stageOutput ? `No discrete Chapter 1 section parsed. See "All Chapters" view.` : '');
                 activeTitle = isA7 ? 'Chapter 1: Foundation — Humanized & Turnitin Safe (<20% Plag, <10% AI)' : 'Chapter 1: Foundation — Reconstructed Draft';
@@ -1653,6 +1663,22 @@
                 activeContent = parsed.ch5 || (stageOutput ? `No discrete Chapter 5 section parsed. See "All Chapters" view.` : '');
                 activeTitle = isA7 ? 'Chapter 5: Synthesizer — Humanized & Turnitin Safe (<20% Plag, <10% AI)' : 'Chapter 5: Synthesizer — Reconstructed Draft';
             }
+
+            // Chapter-specific coherence improvements guideline banner
+            const cohChapterGuideline = (['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].includes(activeResultTab) && state.data.coherence.parsedChapters && state.data.coherence.parsedChapters[activeResultTab])
+                ? `<div class="mb-5 bg-dark-900 border border-emerald-500/30 rounded-xl p-4 shadow-md">
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-dark-700/60">
+                        <div class="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                            <i class="fa-solid fa-network-wired"></i>
+                            <span>Coherence Master Guidelines for ${activeResultTab.toUpperCase()}</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-300/80 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Golden Thread Alignment</span>
+                    </div>
+                    <div class="text-xs text-slate-300 leading-relaxed markdown-body">
+                        \${marked.parse(state.data.coherence.parsedChapters[activeResultTab])}
+                    </div>
+                </div>`
+                : '';
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
@@ -1877,6 +1903,47 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Coherence Master Integration Status Banner -->
+                        <div class="mt-3 bg-dark-900/90 border ${state.data.coherence.output ? 'border-emerald-500/40 bg-emerald-500/5' : (state.data.coherence.isRunning ? 'border-purple-500/40 bg-purple-500/5 animate-pulse' : 'border-dark-700')} rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-lg ${state.data.coherence.output ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : (state.data.coherence.isRunning ? 'bg-purple-500/20 text-purple-300' : 'bg-dark-700 text-slate-400')} flex items-center justify-center text-sm">
+                                    <i class="fa-solid fa-network-wired ${state.data.coherence.isRunning ? 'animate-spin' : ''}"></i>
+                                </div>
+                                <div>
+                                    <div class="text-xs font-bold text-white flex items-center gap-2">
+                                        <span>Coherence Master: Cross-Chapter Golden Thread</span>
+                                        ${state.data.coherence.output ? `
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
+                                            Audited (${(state.data.coherence.evaluatedChapters || []).map(c => c.toUpperCase()).join(', ') || 'Partial'})
+                                        </span>` : (state.data.coherence.isRunning ? `
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 font-semibold border border-purple-500/20 animate-pulse">
+                                            Auditing in Background...
+                                        </span>` : `
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-dark-700 text-slate-400">
+                                            Auto-runs on partial approval
+                                        </span>`)}
+                                    </div>
+                                    <p class="text-[11px] text-slate-400">
+                                        ${state.data.coherence.output 
+                                            ? 'Coherence audits and required chapter modifications are active and mapped into the correction pipeline.' 
+                                            : 'Whenever you approve chapter reviews, Coherence Master automatically evaluates narrative flow and updates here.'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${state.data.coherence.output ? `
+                                <button onclick="importCoherenceToCorrection()" class="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95">
+                                    <i class="fa-solid fa-file-import"></i> Append to Correction Input
+                                </button>
+                                <button onclick="switchCorrectionResultTab('coherence')" class="text-xs bg-dark-700 hover:bg-dark-600 text-teal-300 font-medium px-2.5 py-1.5 rounded-lg border border-teal-500/30 transition-all flex items-center gap-1">
+                                    <i class="fa-solid fa-eye"></i> View Audit
+                                </button>` : `
+                                <button onclick="runCoherenceMaster(false)" ${state.data.coherence.isRunning ? 'disabled' : ''} class="text-xs bg-dark-700 hover:bg-emerald-900/30 text-slate-300 hover:text-emerald-300 px-3 py-1.5 rounded-lg border border-dark-600 transition-colors flex items-center gap-1.5 ${state.data.coherence.isRunning ? 'opacity-50 cursor-not-allowed' : ''}">
+                                    <i class="fa-solid fa-play text-emerald-400"></i> Run Coherence Audit
+                                </button>`}
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Step 3: Action Trigger -->
@@ -1962,10 +2029,14 @@
                                         class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 ${hasCh5 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
+                                <button onclick="switchCorrectionResultTab('coherence')" 
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'coherence' ? 'bg-emerald-600 text-white shadow-md' : 'bg-dark-700 text-emerald-400 hover:bg-dark-600'}">
+                                    <i class="fa-solid fa-network-wired"></i> Coherence Changes ${state.data.coherence.output ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
+                                </button>
                             </div>
 
                             <div class="flex flex-wrap items-center gap-2">
-                                ${activeResultTab !== 'all' ? `
+                                ${activeResultTab !== 'all' && activeResultTab !== 'coherence' ? `
                                 <button onclick="applyActiveChapterToStudio('${activeResultTab}')" 
                                         class="text-xs ${isA7 ? 'bg-purple-600 hover:bg-purple-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white px-3 py-1.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-1.5" 
                                         title="Sync this chapter text directly into the studio workspace">
@@ -2019,9 +2090,9 @@
                         <!-- Active Tab Header & Info -->
                         <div class="bg-dark-850 px-6 py-2.5 border-b border-dark-750 flex items-center justify-between text-xs">
                             <span class="font-semibold text-slate-200 flex items-center gap-2">
-                                <i class="fa-solid fa-circle-info ${isA7 ? 'text-accent-purple' : 'text-accent-teal'}"></i> ${activeTitle}
+                                <i class="fa-solid fa-circle-info ${activeResultTab === 'coherence' ? 'text-emerald-400' : (isA7 ? 'text-accent-purple' : 'text-accent-teal')}"></i> ${activeTitle}
                             </span>
-                            ${activeResultTab !== 'all' ? `
+                            ${activeResultTab !== 'all' && activeResultTab !== 'coherence' ? `
                             <span class="text-slate-400">
                                 Click <strong class="${isA7 ? 'text-purple-300' : 'text-accent-green'}">"Apply ${isA7 ? 'Agent 7' : 'Agent 6'} to ${activeResultTab.toUpperCase()}"</strong> to update your chapter workspace.
                             </span>` : ''}
@@ -2033,7 +2104,7 @@
                                 ? '<div class="flex items-center gap-3 text-accent-teal"><div class="loader border-t-accent-teal"></div> <span>Stage 1: Agent 6 is parsing corrections and reconstructing chapters in background... (Agent 7 will start automatically once done)</span></div>' 
                                 : (isAgent7Running 
                                     ? '<div class="flex items-center gap-3 text-purple-400"><div class="loader border-t-purple-400"></div> <span>Stage 2: Agent 7 is rewriting chapters for Turnitin compliance (&lt;20% plagiarism, &lt;10% AI content) with doctoral cadence...</span></div>'
-                                    : (activeContent ? marked.parse(activeContent) : '<div class="text-slate-500 italic">No content available for this section yet. Click "Run Full Pipeline" to generate.</div>'))}
+                                    : (activeContent ? `${cohChapterGuideline}${marked.parse(activeContent)}` : `${cohChapterGuideline}<div class="text-slate-500 italic">No content available for this section yet. Click "Run Full Pipeline" to generate.</div>`))}
                         </div>
                     </div>
                 </div>
@@ -2804,6 +2875,53 @@ This disconnect establishes the central empirical problem of this investigation.
             return chapters;
         }
 
+        function parseCoherenceChapters(fullText) {
+            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '', matrix: '' };
+            if (!fullText) return chapters;
+
+            // Pattern for Ch 1
+            const m1 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*1\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*[2-6]\b|CROSS-CHAPTER)|$)/i);
+            if (m1) chapters.ch1 = (m1[0] || '').trim();
+
+            // Pattern for Ch 2
+            const m2 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*2\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*[3-6]\b|CROSS-CHAPTER)|$)/i);
+            if (m2) chapters.ch2 = (m2[0] || '').trim();
+
+            // Pattern for Ch 3
+            const m3 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*3\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*[4-6]\b|CROSS-CHAPTER)|$)/i);
+            if (m3) chapters.ch3 = (m3[0] || '').trim();
+
+            // Pattern for Ch 4
+            const m4 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*4\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*[5-6]\b|CROSS-CHAPTER)|$)/i);
+            if (m4) chapters.ch4 = (m4[0] || '').trim();
+
+            // Pattern for Ch 5
+            const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*5\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*6\b|CROSS-CHAPTER)|$)/i);
+            if (m5) chapters.ch5 = (m5[0] || '').trim();
+
+            // Cross-Chapter Golden Thread Matrix
+            const mm = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CROSS-CHAPTER|GOLDEN THREAD)[\s\S]*$/i);
+            if (mm) chapters.matrix = (mm[0] || '').trim();
+
+            return chapters;
+        }
+
+        function importCoherenceToCorrection() {
+            const coh = state.data.coherence;
+            if (!coh.output) {
+                alert("No Coherence Master output available to import.");
+                return;
+            }
+            const corr = state.data.correction;
+            const header = `\n\n[IMPORTED COHERENCE MASTER CHANGES (${new Date().toLocaleTimeString()})]:\n`;
+            corr.text = (corr.text ? corr.text.trim() + '\n\n' : '') + header + coh.output;
+            const ta = document.getElementById('correction-textarea');
+            if (ta) ta.value = corr.text;
+            const wc = document.getElementById('correction-word-count');
+            if (wc) wc.textContent = `${corr.text.trim().split(/\s+/).length.toLocaleString()} words`;
+            showToast("✅ Imported Coherence Master changes into Correction input!", "success");
+        }
+
         function applyActiveChapterToStudio(chapId) {
             const corr = state.data.correction;
             const isA7 = corr.activeStage === 'agent7';
@@ -2830,6 +2948,8 @@ This disconnect establishes the central empirical problem of this investigation.
             let textToCopy = '';
             if (tab === 'all') {
                 textToCopy = isA7 ? (corr.agent7Output || '') : (corr.output || '');
+            } else if (tab === 'coherence') {
+                textToCopy = state.data.coherence.output || '';
             } else {
                 const parsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
                 textToCopy = parsed[tab] || '';
@@ -2839,7 +2959,7 @@ This disconnect establishes the central empirical problem of this investigation.
                 return;
             }
             navigator.clipboard.writeText(textToCopy).then(() => {
-                showToast(`Copied ${isA7 ? 'Agent 7' : 'Agent 6'} ${tab === 'all' ? 'manuscript' : tab.toUpperCase()} to clipboard!`, 'info');
+                showToast(`Copied ${tab === 'coherence' ? 'Coherence Master audit' : (isA7 ? 'Agent 7' : 'Agent 6') + ' ' + (tab === 'all' ? 'manuscript' : tab.toUpperCase())} to clipboard!`, 'info');
             }).catch(e => {
                 alert('Could not copy text: ' + e.message);
             });
@@ -2908,11 +3028,20 @@ MANDATORY RICH PUBLICATION FORMATTING:
 2. Conceptual & Workflow Diagrams: When revising theoretical frameworks (e.g. DAN 2.0, TRAM, TAM, TRI) or sampling workflows, provide the diagram in Mermaid syntax (\`\`\`mermaid graph TD ... \`\`\`) so that the system renders it as a visual diagram and embeds it as an image in exported Word (.docx/.doc) and PDF files.
 `;
 
+            let coherenceContext = '';
+            if (state.data.coherence.output && state.data.coherence.output.trim().length > 50) {
+                coherenceContext = `\n[COHERENCE MASTER GOLDEN THREAD AUDIT & REQUIRED CHAPTER CHANGES]:
+The thesis has undergone a cross-chapter coherence audit. You MUST address these coherence modifications in each respective chapter alongside the examiner feedback:
+---
+${state.data.coherence.output.substring(0, 15000)}
+---\n`;
+            }
+
             const userPrompt = `HERE ARE THE CORRECTION REQUIREMENTS & EXAMINER FEEDBACK:
 ---
 ${corr.text}
 ---
-
+${coherenceContext}
 HERE IS THE EXISTING THESIS DRAFT CONTEXT FROM THE STUDIO (IF ANY):
 [CHAPTER 1 CURRENT DRAFT]
 ${state.data.ch1.text ? state.data.ch1.text.substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 1 draft meeting the correction criteria.'}
@@ -3677,13 +3806,16 @@ ${rtfBody}
             const actualStage = stage === 'active' ? (corr.activeStage || (corr.agent7Output ? 'agent7' : 'agent6')) : stage;
             const actualTab = tab === 'active' ? (corr.activeResultTab || 'all') : tab;
             const isA7 = actualStage === 'agent7';
-            const stageLabel = isA7 ? 'Agent 7 Humanized (Turnitin Safe)' : 'Agent 6 Reconstructed Chapters';
+            let stageLabel = isA7 ? 'Agent 7 Humanized (Turnitin Safe)' : 'Agent 6 Reconstructed Chapters';
 
             let content = '';
-            let fileScope = actualTab === 'all' ? 'All_Chapters' : actualTab.toUpperCase();
+            let fileScope = actualTab === 'all' ? 'All_Chapters' : (actualTab === 'coherence' ? 'Coherence_Changes' : actualTab.toUpperCase());
 
             if (actualTab === 'all') {
                 content = isA7 ? (corr.agent7Output || corr.output || '') : (corr.output || corr.agent7Output || '');
+            } else if (actualTab === 'coherence') {
+                content = state.data.coherence.output || '';
+                stageLabel = 'Coherence Master (Golden Thread Audit & Chapter Changes)';
             } else {
                 const primaryParsed = isA7 ? (corr.agent7ParsedChapters || {}) : (corr.parsedChapters || {});
                 const secondaryParsed = isA7 ? (corr.parsedChapters || {}) : (corr.agent7ParsedChapters || {});
@@ -4013,7 +4145,145 @@ Generate Part II to complete the master treatise. Target length: approximately $
         }
 
 
+        function isAnyChapterRunning() {
+            return ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].some(id => state.data[id] && state.data[id].isRunning);
+        }
+
+        function triggerAutoCoherenceReview() {
+            const approvedChapters = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].filter(id => {
+                const d = state.data[id];
+                return d && (d.status === 'Approved' || (d.output && d.output.trim().length > 50));
+            });
+
+            if (approvedChapters.length === 0) return;
+            if (state.data.coherence.isRunning) return;
+
+            showToast(`🔄 <strong>Partial Approval Detected</strong> (${approvedChapters.map(c => c.toUpperCase()).join(', ')}). Auto-launching <strong>Coherence Master</strong>...`, 'info');
+            runCoherenceMaster(true);
+        }
+
+        async function runCoherenceMaster(isAuto = false) {
+            const coh = state.data.coherence;
+            if (coh.isRunning) return;
+
+            const approvedChapterIds = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].filter(id => {
+                const d = state.data[id];
+                return d && (d.status === 'Approved' || (d.text && d.text.trim().length >= 50));
+            });
+
+            if (approvedChapterIds.length === 0 && (!coh.text || coh.text.trim().length < 50)) {
+                if (!isAuto) {
+                    alert("Please approve or enter text for at least one chapter before running Coherence Master.");
+                }
+                return;
+            }
+
+            coh.isRunning = true;
+            renderSidebar();
+            if (state.activeTab === 'coherence' || state.activeTab === 'correction') {
+                renderWorkspace();
+            }
+
+            const chapNames = approvedChapterIds.map(id => id.toUpperCase()).join(', ');
+            showToast(isAuto 
+                ? `🌐 Auto-running <strong>Coherence Master</strong> across partially approved chapters (${chapNames})...` 
+                : `🌐 Running <strong>Coherence Master</strong> across chapters (${chapNames || 'Input'})...`, 
+                'info'
+            );
+
+            const systemPrompt = `You are the Coherence Master Agent for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
+Your mission is to audit the "Golden Thread" and narrative coherence across all partially and fully approved chapters.
+Ensure strict consistency in:
+- Research problem, research questions (RQs), and research objectives (ROs) from Chapter 1.
+- Theoretical foundations (DAN 2.0 policy, TRAM, TAM, TRI, trust/satisfaction mediation, age moderator) from Chapter 2.
+- Methodological design (cross-sectional survey in Melaka, PLS-SEM, G*Power n=256, sampling criteria) from Chapter 3.
+- Data analysis and statistical reporting (outer/measurement model, HTMT, Fornell-Larcker, inner/structural model path coefficients) from Chapter 4.
+- Synthesis, discussion, policy implications, and future directions from Chapter 5.
+
+MANDATORY OUTPUT FORMAT:
+You MUST structure your coherence audit and required changes strictly by chapters using these exact markdown headers:
+
+### CHAPTER 1: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Evaluation against overarching thesis objectives]
+- **Identified Inconsistencies & Gaps**: [Bullet points of variable discrepancies, terminology mismatches, or disconnects with subsequent chapters]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 1 to harmonize with the rest of the thesis]
+
+### CHAPTER 2: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Theoretical alignment with RQs and methodology]
+- **Identified Inconsistencies & Gaps**: [Discrepancies in construct definitions, hypotheses, or theoretical linkages]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 2]
+
+### CHAPTER 3: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Methodological alignment with Chapter 2 hypotheses and Chapter 4 statistics]
+- **Identified Inconsistencies & Gaps**: [Sample discrepancies, operationalization gaps, or sampling frame inconsistencies]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 3]
+
+### CHAPTER 4: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Empirical alignment with Chapter 3 hypotheses and Chapter 5 discussion]
+- **Identified Inconsistencies & Gaps**: [Statistical inconsistencies, metric reporting gaps]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 4]
+
+### CHAPTER 5: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Direct resolution of Chapter 1 RQs and synthesis of Chapter 4 findings]
+- **Identified Inconsistencies & Gaps**: [Overgeneralizations, unsupported claims, or missing policy ties to DAN 2.0]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 5]
+
+### CROSS-CHAPTER GOLDEN THREAD SYNTHESIS MATRIX
+Construct a comprehensive Markdown table summarizing the Golden Thread alignment across all chapters:
+| Chapter | Key Anchor Element | Coherence Status | Cross-Chapter Linkage & Alignment Fix |
+| :--- | :--- | :--- | :--- |
+| **Chapter 1** | DAN 2.0 & Research Objectives | [Aligned / Needs Fix] | [Linkage to Ch 2 theories and Ch 3 questions] |
+| **Chapter 2** | TRAM, TAM, TRI Sequential Mediation | [Aligned / Needs Fix] | [Linkage to Ch 1 problem and Ch 3 PLS-SEM] |
+| **Chapter 3** | Melaka Survey (n=256), G*Power | [Aligned / Needs Fix] | [Linkage to Ch 2 hypotheses and Ch 4 models] |
+| **Chapter 4** | PLS-SEM Bootstrapping, HTMT | [Aligned / Needs Fix] | [Linkage to Ch 2 hypotheses and Ch 5 findings] |
+| **Chapter 5** | Agro-Food Policy & Practical Implications | [Aligned / Needs Fix] | [Linkage to Ch 1 RQs and Ch 4 empirical results] |
+`;
+
+            let chapsContext = '';
+            approvedChapterIds.forEach(id => {
+                const d = state.data[id];
+                const draftSnippet = d.text ? d.text.substring(0, 10000) : '';
+                const auditSnippet = d.output ? d.output.substring(0, 4000) : '';
+                chapsContext += `\n\n=== ${id.toUpperCase()} APPROVED DRAFT & AUDIT ===\nStatus: ${d.status}\n[DRAFT EXCERPT]:\n${draftSnippet || 'No draft text'}\n[AUDIT CRITIQUE]:\n${auditSnippet || 'No audit critique'}\n`;
+            });
+
+            if (coh.text && coh.text.trim()) {
+                chapsContext += `\n\n=== ADDITIONAL COHERENCE NOTES / INPUT ===\n${coh.text.substring(0, 10000)}\n`;
+            }
+
+            const userPrompt = `AUDIT THE FOLLOWING EVALUATED THESIS CHAPTERS FOR CROSS-CHAPTER COHERENCE AND THE GOLDEN THREAD:
+${chapsContext}
+
+Evaluated Chapters: ${chapNames || 'Provided inputs'}
+Pending Chapters: ${['ch1','ch2','ch3','ch4','ch5'].filter(id => !approvedChapterIds.includes(id)).map(id => id.toUpperCase()).join(', ') || 'None (All chapters audited)'}
+
+Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Changes following the exact structure specified.`;
+
+            try {
+                const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
+                coh.output = responseText;
+                coh.parsedChapters = parseCoherenceChapters(responseText);
+                coh.evaluatedChapters = approvedChapterIds;
+                coh.status = 'Approved';
+                coh.isRunning = false;
+                showToast(`✨ <strong>Coherence Master</strong> audit completed across ${approvedChapterIds.length} chapter(s)!`, 'success');
+            } catch (e) {
+                coh.output = `**Coherence Master audit failed:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
+                coh.isRunning = false;
+                showToast(`Coherence Master failed: ${e.message}`, 'error');
+            }
+
+            renderSidebar();
+            if (state.activeTab === 'coherence' || state.activeTab === 'correction' || state.activeTab === 'tribunal') {
+                renderWorkspace();
+            }
+        }
+
         async function runAgent(agentId) {
+            if (agentId === 'coherence') {
+                return runCoherenceMaster(false);
+            }
+
             const data = state.data[agentId];
             if (data.isRunning) return;
 
@@ -4039,6 +4309,13 @@ Generate Part II to complete the master treatise. Target length: approximately $
                 data.status = 'Approved';
                 data.isRunning = false;
                 showToast(`Analysis completed for <strong>${agentProfile.title}</strong>!`, 'success');
+
+                // AUTOMATIC COHERENCE MASTER TRIGGER ON PARTIAL / FULL APPROVAL
+                if (['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].includes(agentId)) {
+                    if (!isAnyChapterRunning()) {
+                        triggerAutoCoherenceReview();
+                    }
+                }
             } catch(e) {
                 data.output = `**Error processing agent review:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
                 data.isRunning = false;
