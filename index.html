@@ -652,7 +652,9 @@
                     status: 'Pending', 
                     isRunning: false,
                     parsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '', matrix: '' },
-                    evaluatedChapters: []
+                    evaluatedChapters: [],
+                    debateTranscript: '',
+                    settledConsensus: ''
                 },
                 tribunal: { output: '', status: 'Pending', isRunning: false },
                 correction: {
@@ -671,7 +673,11 @@
                     agent7Status: 'Pending',
                     agent7Running: false,
                     activeStage: 'agent7',
-                    activeResultTab: 'all'
+                    activeResultTab: 'all',
+                    hasTribunalCritique: false,
+                    awaitingUserUpload: false,
+                    tribunalCritique: '',
+                    tribunalParsedChapters: { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' }
                 },
                 rephraser: {
                     text: '',
@@ -790,6 +796,9 @@
                 state.data[agentId].fileName = filename;
                 state.data[agentId].fileWords = words;
                 state.data[agentId].hasUploadedFile = true;
+                if (agentId === 'correction') {
+                    state.data.correction.awaitingUserUpload = false;
+                }
 
                 // CRITICAL FIX: DO NOT DUMP OR EXTRACT CONTENT INTO THE PASTE AREA TEXTAREA!
                 // Dumping content into the textarea causes truncation, browser freezing,
@@ -2165,6 +2174,76 @@
                         </div>
                     </div>
 
+                    <!-- Master Tribunal Auto-Upload Action Required Callout -->
+                    ${(corr.awaitingUserUpload || corr.hasTribunalCritique) ? `
+                    <div class="bg-gradient-to-r from-purple-950/80 via-dark-850 to-indigo-950/80 border-2 border-accent-purple rounded-xl p-5 shadow-2xl space-y-4 animate-[fadeIn_0.3s_ease-in-out]">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center text-2xl shrink-0 border border-purple-500/40">
+                                <i class="fa-solid fa-scale-balanced"></i>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                                    <span class="text-xs font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                                        Auto-Chained from Master Tribunal
+                                    </span>
+                                    <span class="text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                        <i class="fa-solid fa-check-circle mr-1"></i>Critique Auto-Uploaded Chapter-by-Chapter
+                                    </span>
+                                    ${corr.awaitingUserUpload ? `
+                                    <span class="text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+                                        <i class="fa-solid fa-bell mr-1"></i>Awaiting User File or Confirmation
+                                    </span>` : ''}
+                                </div>
+                                <h4 class="text-base font-bold text-white mb-1">
+                                    Action Required: Upload Official Correction Document (or Proceed with Tribunal Critique)
+                                </h4>
+                                <p class="text-xs text-slate-300 leading-relaxed">
+                                    The <strong>Master Tribunal</strong> has deliberated on your thesis chapters and automatically uploaded its structured chapter-by-chapter critique into memory below.
+                                    Before running the full correction pipeline, please <strong>upload your official viva report / examiner correction document</strong> (.pdf, .docx, .doc), or click <strong>Proceed with Tribunal Critique</strong> to execute Agent 6 Reconstruction &amp; Agent 7 Turnitin Humanization directly.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Chapter Critiques Summary Chips -->
+                        <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-purple-500/20">
+                            <span class="text-[11px] font-semibold text-slate-400">Auto-Uploaded Requirements:</span>
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                <i class="fa-solid fa-file-lines mr-1"></i>Chapter 1: Foundation
+                            </span>
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                                <i class="fa-solid fa-book-open mr-1"></i>Chapter 2: Theorist
+                            </span>
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                                <i class="fa-solid fa-flask mr-1"></i>Chapter 3: Methodologist
+                            </span>
+                            ${(corr.tribunalParsedChapters && corr.tribunalParsedChapters.ch4) ? `
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-pink-500/10 text-pink-300 border border-pink-500/20">
+                                <i class="fa-solid fa-chart-pie mr-1"></i>Chapter 4: Analyst
+                            </span>` : ''}
+                            ${(corr.tribunalParsedChapters && corr.tribunalParsedChapters.ch5) ? `
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                <i class="fa-solid fa-bullseye mr-1"></i>Chapter 5: Synthesizer
+                            </span>` : ''}
+                        </div>
+
+                        <!-- User Action Controls -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                            <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-info text-purple-400"></i>
+                                <span>${corr.hasUploadedFile ? `File <strong>${escapeHtml(corr.fileName)}</strong> attached (${corrWords.toLocaleString()} words).` : 'No external file uploaded yet. Auto-uploaded critique is active in paste area.'}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="document.getElementById('file-input-correction').click()" class="text-xs bg-accent-teal hover:bg-teal-500 text-dark-900 font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95">
+                                    <i class="fa-solid fa-file-arrow-up"></i> ${corr.hasUploadedFile ? 'Replace Uploaded File' : 'Upload Correction File (.pdf / .docx)'}
+                                </button>
+                                <button onclick="proceedWithTribunalCritique()" class="text-xs bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-purple-500/20 active:scale-95">
+                                    <i class="fa-solid fa-play"></i> Proceed with Tribunal Critique
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
                     <!-- Step 1: Upload Correction File & Notes -->
                     <div class="bg-dark-800 border border-dark-700 rounded-xl p-5 shadow-lg space-y-4">
                         <div class="flex items-center justify-between">
@@ -3503,7 +3582,24 @@ This disconnect establishes the central empirical problem of this investigation.
             }
         }
 
-        function parseCorrectionChapters(fullText) {
+        function getSubmittedChapterIds() {
+            const list = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].filter(id => {
+                const d = state.data[id];
+                if (!d) return false;
+                if (d.hasUploadedFile && d.fileText && d.fileText.trim().length >= 30) return true;
+                if (d.text && d.text.trim().length >= 30) return true;
+                if (d.pastedText && d.pastedText.trim().length >= 30) return true;
+                if (d.output && d.output.trim().length >= 30) return true;
+                return false;
+            });
+            // Ensure foundational chapters 1, 2, and 3 are always anchored
+            ['ch1', 'ch2', 'ch3'].forEach(mustId => {
+                if (!list.includes(mustId)) list.push(mustId);
+            });
+            return list.sort();
+        }
+
+        function parseCorrectionChapters(fullText, requiredChapters = null) {
             const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' };
             if (!fullText) return chapters;
 
@@ -3522,10 +3618,34 @@ This disconnect establishes the central empirical problem of this investigation.
             const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*6\b|$)/i);
             if (m5) chapters.ch5 = m5[0].trim();
 
+            // Zero Missing Chapters Fallback Guarantee
+            const req = requiredChapters || getSubmittedChapterIds();
+            const numMap = { ch1: '1', ch2: '2', ch3: '3', ch4: '4', ch5: '5' };
+            const wordMap = { ch1: 'ONE', ch2: 'TWO', ch3: 'THREE', ch4: 'FOUR', ch5: 'FIVE' };
+
+            req.forEach(cid => {
+                if (!chapters[cid] || chapters[cid].trim().length < 20) {
+                    const n = numMap[cid];
+                    const w = wordMap[cid];
+                    const altRegex = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?(?:CHAPTER\\s*(?:${n}|${w})\\b[^\\n]*)([\\s\\S]*?)(?=(?:^|\\n)(?:#{1,4}\\s*)?CHAPTER\\s*(?:\\d|[A-Z]+)\\b|$)`, 'i');
+                    const altMatch = fullText.match(altRegex);
+                    if (altMatch) {
+                        chapters[cid] = altMatch[0].trim();
+                    } else if (fullText.includes(`CHAPTER ${n}`) || fullText.includes(`Chapter ${n}`)) {
+                        const idx = fullText.search(new RegExp(`CHAPTER\\s*${n}\\b`, 'i'));
+                        if (idx !== -1) {
+                            const sub = fullText.substring(idx);
+                            const nextIdx = sub.substring(20).search(/CHAPTER\s*\d\b/i);
+                            chapters[cid] = (nextIdx !== -1 ? sub.substring(0, nextIdx + 20) : sub).trim();
+                        }
+                    }
+                }
+            });
+
             return chapters;
         }
 
-        function parseAgent7Chapters(fullText) {
+        function parseAgent7Chapters(fullText, requiredChapters = null) {
             const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' };
             if (!fullText) return chapters;
 
@@ -3544,7 +3664,101 @@ This disconnect establishes the central empirical problem of this investigation.
             const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*6\b|TURNITIN\s*&|$))/i);
             if (m5) chapters.ch5 = m5[0].trim();
 
+            // Zero Missing Chapters Fallback Guarantee
+            const req = requiredChapters || getSubmittedChapterIds();
+            const numMap = { ch1: '1', ch2: '2', ch3: '3', ch4: '4', ch5: '5' };
+            const wordMap = { ch1: 'ONE', ch2: 'TWO', ch3: 'THREE', ch4: 'FOUR', ch5: 'FIVE' };
+
+            req.forEach(cid => {
+                if (!chapters[cid] || chapters[cid].trim().length < 20) {
+                    const n = numMap[cid];
+                    const w = wordMap[cid];
+                    const altRegex = new RegExp(`(?:^|\\n)(?:#{1,4}\\s*)?(?:CHAPTER\\s*(?:${n}|${w})\\b[^\\n]*)([\\s\\S]*?)(?=(?:^|\\n)(?:#{1,4}\\s*)?(?:CHAPTER\\s*(?:\\d|[A-Z]+)\\b|TURNITIN\\s*&|$)`, 'i');
+                    const altMatch = fullText.match(altRegex);
+                    if (altMatch) {
+                        chapters[cid] = altMatch[0].trim();
+                    } else if (fullText.includes(`CHAPTER ${n}`) || fullText.includes(`Chapter ${n}`)) {
+                        const idx = fullText.search(new RegExp(`CHAPTER\\s*${n}\\b`, 'i'));
+                        if (idx !== -1) {
+                            const sub = fullText.substring(idx);
+                            const nextIdx = sub.substring(20).search(/(?:CHAPTER\s*\d\b|TURNITIN\s*&)/i);
+                            chapters[cid] = (nextIdx !== -1 ? sub.substring(0, nextIdx + 20) : sub).trim();
+                        }
+                    }
+                }
+            });
+
             return chapters;
+        }
+
+        function parseTribunalChapterCritiques(fullText) {
+            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '' };
+            if (!fullText) return chapters;
+
+            const m1 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*1\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*2\b|$)/i);
+            if (m1) chapters.ch1 = m1[0].trim();
+
+            const m2 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*2\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*3\b|$)/i);
+            if (m2) chapters.ch2 = m2[0].trim();
+
+            const m3 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*3\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*4\b|$)/i);
+            if (m3) chapters.ch3 = m3[0].trim();
+
+            const m4 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*4\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*5\b|$)/i);
+            if (m4) chapters.ch4 = m4[0].trim();
+
+            const m5 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*5\b[^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*6\b|DEFENSE|SCORE|APA|$))/i);
+            if (m5) chapters.ch5 = m5[0].trim();
+
+            return chapters;
+        }
+
+        function autoUploadTribunalToCorrection(tribunalOutput) {
+            if (!tribunalOutput) return;
+            const corr = state.data.correction;
+            const parsedTribunal = parseTribunalChapterCritiques(tribunalOutput);
+
+            corr.tribunalCritique = tribunalOutput;
+            corr.tribunalParsedChapters = parsedTribunal;
+            corr.hasTribunalCritique = true;
+            corr.awaitingUserUpload = true;
+
+            // Formulate structured chapter-by-chapter critique text
+            let structuredCritique = `### MASTER TRIBUNAL AUTO-UPLOADED CRITIQUE (CHAPTER-BY-CHAPTER DIRECTIVES)\n\n`;
+            let hasAnyChapter = false;
+            ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].forEach(cid => {
+                if (parsedTribunal[cid] && parsedTribunal[cid].trim().length > 20) {
+                    structuredCritique += `${parsedTribunal[cid].trim()}\n\n---\n\n`;
+                    hasAnyChapter = true;
+                }
+            });
+
+            if (!hasAnyChapter) {
+                structuredCritique += tribunalOutput;
+            }
+
+            // If user has not uploaded an external file, populate paste area
+            if (!corr.hasUploadedFile) {
+                corr.text = structuredCritique.trim();
+                corr.pastedText = structuredCritique.trim();
+                const ta = document.getElementById('correction-textarea');
+                if (ta) ta.value = corr.text;
+                const wc = document.getElementById('correction-word-count');
+                if (wc) wc.textContent = `${corr.text.trim().split(/\s+/).length.toLocaleString()} words`;
+            }
+
+            // Auto-navigate to Correction Studio
+            state.activeTab = 'correction';
+            renderSidebar();
+            renderWorkspace();
+
+            showToast(`⚖️ <strong>Master Tribunal</strong> auto-uploaded chapter-by-chapter critique! Please upload your correction file or proceed.`, 'info');
+        }
+
+        function proceedWithTribunalCritique() {
+            state.data.correction.awaitingUserUpload = false;
+            showToast("Proceeding with auto-uploaded Master Tribunal critique. Click 'Run Full Pipeline' below to reconstruct and humanize.", "success");
+            renderWorkspace();
         }
 
         function parseRephraserChapters(fullText) {
@@ -3575,8 +3789,12 @@ This disconnect establishes the central empirical problem of this investigation.
         }
 
         function parseCoherenceChapters(fullText) {
-            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '', matrix: '' };
+            const chapters = { ch1: '', ch2: '', ch3: '', ch4: '', ch5: '', matrix: '', debate: '' };
             if (!fullText) return chapters;
+
+            // Extract dialectic multi-agent debate
+            const mDebate = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?(?:MULTI-AGENT DIALECTIC DEBATE|DIALECTIC DEBATE|AGENT DEBATE)[\s\S]*?(?=(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*1\b|$)/i);
+            if (mDebate) chapters.debate = mDebate[0].trim();
 
             // Pattern for Ch 1
             const m1 = fullText.match(/(?:^|\n)(?:#{1,4}\s*)?CHAPTER\s*1\b[:\s\-–—]*([^\n]*)([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:CHAPTER\s*[2-6]\b|CROSS-CHAPTER)|$)/i);
@@ -3679,6 +3897,8 @@ This disconnect establishes the central empirical problem of this investigation.
                 return;
             }
 
+            const submittedChapters = getSubmittedChapterIds();
+
             corr.isRunning = true;
             corr.activeStage = 'agent6';
             renderSidebar();
@@ -3686,7 +3906,7 @@ This disconnect establishes the central empirical problem of this investigation.
                 renderWorkspace();
             }
 
-            showToast("🚀 <strong>Agent 6</strong> is reconstructing chapters (Stage 1 of 2)...", "info");
+            showToast(`🚀 <strong>Agent 6</strong> is reconstructing chapters (${submittedChapters.map(c => c.toUpperCase()).join(', ')})...`, "info");
 
             const systemPrompt = `You are Agent 6: PhD Thesis Reconstructor & Multi-Chapter Rephraser.
 Your role is to execute comprehensive thesis revisions, reconstruct scholarly narrative flows, and rephrase thesis chapters based on examiner viva reports, supervisory critique, and correction lists.
@@ -3694,8 +3914,13 @@ Your role is to execute comprehensive thesis revisions, reconstruct scholarly na
 You are rigorous, deeply academic, and adhere strictly to APA 7th edition formatting and postgraduate doctoral standards.
 Your output must be divided cleanly into chapters so the student can review each chapter's revisions individually.
 
+MANDATORY ZERO-OMISSION & CHAPTER-BY-CHAPTER DIRECTIVE:
+You MUST reconstruct and output comprehensive academic text for EVERY SINGLE ONE of the submitted chapters: ${submittedChapters.map(c => c.toUpperCase()).join(', ')}.
+NO CHAPTER MAY BE SKIPPED, MERGED, OR OMITTED. YOU MUST RECONSTRUCT ALL ${submittedChapters.length} CHAPTERS SEPARATELY.
+Make sure no missing chapters depending on chapter submission or attachment!
+
 REQUIRED OUTPUT STRUCTURE:
-For each chapter needing revision (prioritizing Chapter 1, Chapter 2, Chapter 3, plus Chapters 4 and 5 if relevant), you MUST use this exact header line format:
+For EVERY submitted chapter (${submittedChapters.map(c => c.toUpperCase()).join(', ')}), you MUST use this exact header line format:
 
 ### CHAPTER 1: RECONSTRUCTION & REPHRASED TEXT
 - **Corrections Addressed**: [Detailed bulleted summary of specific examiner comments resolved in this chapter]
@@ -3715,17 +3940,18 @@ For each chapter needing revision (prioritizing Chapter 1, Chapter 2, Chapter 3,
 [Provide complete, rephrased chapter text]
 - **Methodological & Theoretical Justification**: [Explain rationale]
 
-### CHAPTER 4: RECONSTRUCTION & REPHRASED TEXT
+${submittedChapters.includes('ch4') ? `### CHAPTER 4: RECONSTRUCTION & REPHRASED TEXT
 - **Corrections Addressed**: [Summary of examiner comments resolved]
 - **Reconstructed & Rephrased Academic Text**:
 [Provide complete, rephrased chapter text]
 - **Methodological & Theoretical Justification**: [Explain rationale]
-
-### CHAPTER 5: RECONSTRUCTION & REPHRASED TEXT
+` : ''}
+${submittedChapters.includes('ch5') ? `### CHAPTER 5: RECONSTRUCTION & REPHRASED TEXT
 - **Corrections Addressed**: [Summary of examiner comments resolved]
 - **Reconstructed & Rephrased Academic Text**:
 [Provide complete, rephrased chapter text]
 - **Methodological & Theoretical Justification**: [Explain rationale]
+` : ''}
 
 MANDATORY RICH PUBLICATION FORMATTING:
 1. Structured Tables: Whenever presenting examiner feedback matrices, hypothesis mappings, G*Power sampling parameters (effect size, alpha, power, sample size), or variable scales, construct them using standard Markdown tables (| Col 1 | Col 2 |). These will be converted into native Word and PDF tables.
@@ -3746,7 +3972,10 @@ ${state.data.coherence.output.substring(0, 15000)}
 ${text}
 ---
 ${coherenceContext}
-HERE IS THE EXISTING THESIS DRAFT CONTEXT FROM THE STUDIO (IF ANY):
+MANDATORY TARGET CHAPTERS TO RECONSTRUCT:
+${submittedChapters.map(c => c.toUpperCase()).join(', ')} (ZERO MISSING CHAPTERS PERMITTED)
+
+HERE IS THE EXISTING THESIS DRAFT CONTEXT FROM THE STUDIO:
 [CHAPTER 1 CURRENT DRAFT]
 ${getActiveChapterText('ch1') ? getActiveChapterText('ch1').substring(0, 15000) : 'Draft not yet loaded in studio. Formulate a complete, reconstructed Chapter 1 draft meeting the correction criteria.'}
 
@@ -3762,12 +3991,12 @@ ${getActiveChapterText('ch4') ? getActiveChapterText('ch4').substring(0, 10000) 
 [CHAPTER 5 CURRENT DRAFT]
 ${getActiveChapterText('ch5') ? getActiveChapterText('ch5').substring(0, 10000) : 'Draft not yet loaded in studio.'}
 
-Please reconstruct each chapter and rephrase the content according to the required corrections. Ensure results are strictly split into Chapter 1, Chapter 2, Chapter 3 (and subsequent chapters if relevant).`;
+Please reconstruct each chapter and rephrase the content according to the required corrections. Ensure results are strictly split chapter-by-chapter for ALL submitted chapters (${submittedChapters.map(c => c.toUpperCase()).join(', ')}).`;
 
             try {
                 const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                 corr.output = responseText;
-                corr.parsedChapters = parseCorrectionChapters(responseText);
+                corr.parsedChapters = parseCorrectionChapters(responseText, submittedChapters);
                 corr.status = 'Approved';
                 corr.isRunning = false;
                 showToast("✨ <strong>Agent 6</strong> finished reconstruction! Automatically launching <strong>Agent 7 Turnitin Humanizer</strong>...", "success");
@@ -3793,13 +4022,15 @@ Please reconstruct each chapter and rephrase the content according to the requir
             const corr = state.data.correction;
             if (corr.agent7Running) return;
 
+            const submittedChapters = getSubmittedChapterIds();
+
             // Base input is Agent 6's reconstructed output or studio drafts
             let sourceDrafts = corr.output;
             if (!sourceDrafts || sourceDrafts.trim().length < 50) {
                 const loaded = [];
-                ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].forEach((cid, idx) => {
+                submittedChapters.forEach((cid) => {
                     const txt = getActiveChapterText(cid);
-                    if (txt) loaded.push(`### CHAPTER ${idx + 1} DRAFT\n${txt}`);
+                    if (txt) loaded.push(`### ${cid.toUpperCase()} DRAFT\n${txt}`);
                 });
                 sourceDrafts = loaded.join('\n\n---\n\n');
             }
@@ -3816,7 +4047,7 @@ Please reconstruct each chapter and rephrase the content according to the requir
                 renderWorkspace();
             }
 
-            showToast("🛡️ <strong>Agent 7</strong> is humanizing chapters and rewriting for Turnitin (<20% Plagiarism, <10% AI)...", "info");
+            showToast(`🛡️ <strong>Agent 7</strong> is humanizing chapters (${submittedChapters.map(c => c.toUpperCase()).join(', ')}) for Turnitin (<20% Plagiarism, <10% AI)...`, "info");
 
             const agent7SystemPrompt = `You are Agent 7: PhD Academic Humanizer & Turnitin-Bypass Stylist.
 Your mission is to perform a rigorous doctoral rewrite of thesis chapters following post-viva corrections, guaranteeing superior coherence, fluid narrative flow, authentic academic logic, and strict compliance with anti-plagiarism and AI-detection thresholds.
@@ -3825,6 +4056,10 @@ TARGET AUDIT BENCHMARKS:
 1. Turnitin Plagiarism Similarity Index: MUST BE LESS THAN 20% (< 20%).
 2. Turnitin / GPTZero AI-Generated Content Score: MUST BE LESS THAN 10% (< 10%).
 3. Tone & Format: Rigorous postgraduate academic English, APA 7th Edition style, seamless "Golden Thread" across chapters.
+
+MANDATORY ZERO-OMISSION & CHAPTER-BY-CHAPTER DIRECTIVE:
+You MUST rewrite and humanize EVERY SINGLE ONE of the submitted chapters: ${submittedChapters.map(c => c.toUpperCase()).join(', ')}.
+NO CHAPTER MAY BE OMITTED OR TRUNCATED. Make sure no missing chapters depending on chapter submission or attachment!
 
 HOW YOU ACHIEVE HUMANIZATION & BYPASS AI DETECTION:
 - Syntactic Burstiness: Intentionally vary sentence lengths and syntactic structures. Mix concise, punchy assertions with multi-clause analytical sentences containing subordinate clauses, appositives, and prepositional framing. Avoid monotonic, rhythmic sentence structures typical of standard LLMs.
@@ -3844,11 +4079,12 @@ You MUST divide your response cleanly into chapters using the exact headings:
 ### CHAPTER 3: HUMANIZED & TURNITIN-OPTIMIZED REWRITE
 [Provide the complete, humanized, and Turnitin-proof academic text ready for the thesis manuscript]
 
-### CHAPTER 4: HUMANIZED & TURNITIN-OPTIMIZED REWRITE
+${submittedChapters.includes('ch4') ? `### CHAPTER 4: HUMANIZED & TURNITIN-OPTIMIZED REWRITE
 [Provide the complete, humanized, and Turnitin-proof academic text ready for the thesis manuscript]
-
-### CHAPTER 5: HUMANIZED & TURNITIN-OPTIMIZED REWRITE
+` : ''}
+${submittedChapters.includes('ch5') ? `### CHAPTER 5: HUMANIZED & TURNITIN-OPTIMIZED REWRITE
 [Provide the complete, humanized, and Turnitin-proof academic text ready for the thesis manuscript]
+` : ''}
 
 ### TURNITIN & AI-DETECTION COMPLIANCE AUDIT
 | Metric | Target Standard | Assessed Rating | Methodological Defense / Technique |
@@ -3870,12 +4106,15 @@ ${sourceDrafts.substring(0, 35000)}
 CORRECTION & THESIS CONTEXT:
 ${corr.text ? corr.text.substring(0, 10000) : 'Postgraduate thesis on AI Chatbot Adoption Readiness in Malaysian Agriculture (Melaka smallholder farmers, DAN 2.0, TRAM, PLS-SEM).'}
 
-Please perform a comprehensive rewrite of each chapter (Chapter 1, Chapter 2, Chapter 3, etc.) ensuring natural human sentence structures, doctoral academic vocabulary, high perplexity/burstiness, Turnitin plagiarism < 20%, and AI content < 10%. Divide your output strictly by chapter using the specified headers.`;
+TARGET SUBMITTED CHAPTERS TO REWRITE (ZERO OMISSIONS):
+${submittedChapters.map(c => c.toUpperCase()).join(', ')}
+
+Please perform a comprehensive rewrite of EVERY SINGLE ONE of the submitted chapters (${submittedChapters.map(c => c.toUpperCase()).join(', ')}) ensuring natural human sentence structures, doctoral academic vocabulary, high perplexity/burstiness, Turnitin plagiarism < 20%, and AI content < 10%. Divide your output strictly by chapter using the specified headers.`;
 
             try {
                 const responseText = await fetchGeminiWithRotation(agent7SystemPrompt, userPrompt);
                 corr.agent7Output = responseText;
-                corr.agent7ParsedChapters = parseAgent7Chapters(responseText);
+                corr.agent7ParsedChapters = parseAgent7Chapters(responseText, submittedChapters);
                 corr.agent7Status = 'Approved';
                 corr.agent7Running = false;
                 corr.activeStage = 'agent7';
@@ -4917,17 +5156,22 @@ Generate Part II to complete the master treatise with Chapters 3, 4, and 5 demar
             const coh = state.data.coherence;
             if (coh.isRunning) return;
 
-            const approvedChapterIds = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'].filter(id => {
+            // Fetch results from Chapter 1, 2, and 3 (and Chapter 4, 5 if available)
+            const candidateIds = ['ch1', 'ch2', 'ch3', 'ch4', 'ch5'];
+            const activeIds = candidateIds.filter(id => {
                 const d = state.data[id];
-                return d && (d.status === 'Approved' || (d.text && d.text.trim().length >= 50));
+                if (!d) return false;
+                const hasText = getActiveChapterText(id).trim().length >= 30;
+                const hasOutput = d.output && d.output.trim().length >= 30;
+                const isApproved = d.status === 'Approved';
+                return hasText || hasOutput || isApproved;
             });
 
-            if (approvedChapterIds.length === 0 && (!coh.text || coh.text.trim().length < 50)) {
-                if (!isAuto) {
-                    alert("Please approve or enter text for at least one chapter before running Coherence Master.");
-                }
-                return;
-            }
+            // Ensure foundational Chapters 1, 2, and 3 are always fetched
+            ['ch1', 'ch2', 'ch3'].forEach(mustId => {
+                if (!activeIds.includes(mustId)) activeIds.push(mustId);
+            });
+            activeIds.sort();
 
             coh.isRunning = true;
             renderSidebar();
@@ -4935,49 +5179,61 @@ Generate Part II to complete the master treatise with Chapters 3, 4, and 5 demar
                 renderWorkspace();
             }
 
-            const chapNames = approvedChapterIds.map(id => id.toUpperCase()).join(', ');
+            const chapNames = activeIds.map(id => id.toUpperCase()).join(', ');
             showToast(isAuto 
-                ? `🌐 Auto-running <strong>Coherence Master</strong> across partially approved chapters (${chapNames})...` 
-                : `🌐 Running <strong>Coherence Master</strong> across chapters (${chapNames || 'Input'})...`, 
+                ? `🌐 Auto-running <strong>Coherence Master</strong> (Agent 1 vs 2 vs 3 Dialectic Debate across ${chapNames})...` 
+                : `🌐 Running <strong>Coherence Master</strong> (Multi-Agent Debate across ${chapNames})...`, 
                 'info'
             );
 
-            const systemPrompt = `You are the Coherence Master Agent for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
-Your mission is to audit the "Golden Thread" and narrative coherence across all partially and fully approved chapters.
-Ensure strict consistency in:
-- Research problem, research questions (RQs), and research objectives (ROs) from Chapter 1.
-- Theoretical foundations (DAN 2.0 policy, TRAM, TAM, TRI, trust/satisfaction mediation, age moderator) from Chapter 2.
-- Methodological design (cross-sectional survey in Melaka, PLS-SEM, G*Power n=256, sampling criteria) from Chapter 3.
-- Data analysis and statistical reporting (outer/measurement model, HTMT, Fornell-Larcker, inner/structural model path coefficients) from Chapter 4.
-- Synthesis, discussion, policy implications, and future directions from Chapter 5.
+            const systemPrompt = `You are the Coherence Master, the supreme dialectic coordinator for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
+
+Your mission is to fetch and combine the results, drafts, and audits from Chapter 1, Chapter 2, and Chapter 3 (plus any subsequent chapters), and orchestrate a rigorous MULTI-AGENT DIALECTIC DEBATE between the three specialist agents:
+1. AGENT 1 (Dr. Elena Vance — Foundation & Context): Champion of problem formulation, National Agrofood Policy 2.0 (DAN 2.0), Melaka smallholder farmer realities, and research objectives.
+2. AGENT 2 (Prof. Marcus Sterling — Theorist): Champion of theoretical modeling, TRAM (TAM + TRI integration), sequential mediation (Perceived Usefulness -> Trust -> Satisfaction -> Continuance Intention), and age moderation.
+3. AGENT 3 (Dr. Sophia Chen — Methodologist): Champion of empirical rigor, G*Power sample adequacy (n=256, 5 predictors, alpha=0.05, power=0.80), cross-sectional survey operationalization in Melaka, indicator reliability, and PLS-SEM statistical thresholds.
+
+STRUCTURE OF THE MULTI-AGENT DEBATE:
+- Round 1 (Opening Stances & Core Claims):
+  - Agent 1 argues problem primacy and smallholder adoption barriers.
+  - Agent 2 argues that empirical data without rigorous TRAM sequential mediation lacks explanatory depth.
+  - Agent 3 challenges both on operational viability, measurement scales, and sample power.
+- Round 2 (Dialectic Cross-Examination & Rebuttal):
+  - Agent 2 challenges Agent 1 on whether Chapter 1 RQs match Chapter 2 latent constructs.
+  - Agent 3 challenges Agent 2 on construct complexity and multicollinearity risk (VIF > 3.3).
+  - Agent 1 challenges Agent 3 on field survey accessibility for aging rural farmers in Melaka.
+- Round 3 (Settled Consensus & Golden Thread Reconciliation):
+  - Coherence Master arbitrates the debate, resolves all discrepancies, and produces definitive chapter-by-chapter modifications.
 
 MANDATORY OUTPUT FORMAT:
-You MUST structure your coherence audit and required changes strictly by chapters using these exact markdown headers:
+You MUST structure your response with these exact markdown headers:
+
+### MULTI-AGENT DIALECTIC DEBATE: AGENT 1 VS AGENT 2 VS AGENT 3
+[Provide the complete 3-round dialectic debate transcript where Agent 1, Agent 2, and Agent 3 rigorously argue, challenge assumptions, and debate each other]
 
 ### CHAPTER 1: COHERENCE AUDIT & REQUIRED CHANGES
 - **Golden Thread Alignment**: [Evaluation against overarching thesis objectives]
-- **Identified Inconsistencies & Gaps**: [Bullet points of variable discrepancies, terminology mismatches, or disconnects with subsequent chapters]
-- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 1 to harmonize with the rest of the thesis]
+- **Debate Outcome & Reconciled Arguments**: [How Agent 1, 2, and 3 reconciled Chapter 1 focus]
+- **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 1]
 
 ### CHAPTER 2: COHERENCE AUDIT & REQUIRED CHANGES
 - **Golden Thread Alignment**: [Theoretical alignment with RQs and methodology]
-- **Identified Inconsistencies & Gaps**: [Discrepancies in construct definitions, hypotheses, or theoretical linkages]
+- **Debate Outcome & Reconciled Arguments**: [How theoretical constructs and sequential mediation were harmonized]
 - **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 2]
 
 ### CHAPTER 3: COHERENCE AUDIT & REQUIRED CHANGES
-- **Golden Thread Alignment**: [Methodological alignment with Chapter 2 hypotheses and Chapter 4 statistics]
-- **Identified Inconsistencies & Gaps**: [Sample discrepancies, operationalization gaps, or sampling frame inconsistencies]
+- **Golden Thread Alignment**: [Methodological alignment with Chapter 2 hypotheses and statistical power]
+- **Debate Outcome & Reconciled Arguments**: [How G*Power n=256 and survey scales were reconciled with farmer reality]
 - **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 3]
 
-### CHAPTER 4: COHERENCE AUDIT & REQUIRED CHANGES
-- **Golden Thread Alignment**: [Empirical alignment with Chapter 3 hypotheses and Chapter 5 discussion]
-- **Identified Inconsistencies & Gaps**: [Statistical inconsistencies, metric reporting gaps]
+${activeIds.includes('ch4') ? `### CHAPTER 4: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Empirical alignment with Chapter 3 hypotheses]
 - **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 4]
-
-### CHAPTER 5: COHERENCE AUDIT & REQUIRED CHANGES
-- **Golden Thread Alignment**: [Direct resolution of Chapter 1 RQs and synthesis of Chapter 4 findings]
-- **Identified Inconsistencies & Gaps**: [Overgeneralizations, unsupported claims, or missing policy ties to DAN 2.0]
+` : ''}
+${activeIds.includes('ch5') ? `### CHAPTER 5: COHERENCE AUDIT & REQUIRED CHANGES
+- **Golden Thread Alignment**: [Resolution of Chapter 1 RQs and DAN 2.0 policy implications]
 - **Required Coherence Modifications**: [Specific concrete adjustments needed in Chapter 5]
+` : ''}
 
 ### CROSS-CHAPTER GOLDEN THREAD SYNTHESIS MATRIX
 Construct a comprehensive Markdown table summarizing the Golden Thread alignment across all chapters:
@@ -4990,43 +5246,57 @@ Construct a comprehensive Markdown table summarizing the Golden Thread alignment
 | **Chapter 5** | Agro-Food Policy & Practical Implications | [Aligned / Needs Fix] | [Linkage to Ch 1 RQs and Ch 4 empirical results] |
 `;
 
-            let chapsContext = '';
-            approvedChapterIds.forEach(id => {
+            let chapsContext = `=== COMBINED CHAPTER INPUTS FOR MULTI-AGENT DIALECTIC DEBATE ===\n`;
+            activeIds.forEach(id => {
                 const d = state.data[id];
-                const draftSnippet = getActiveChapterText(id).substring(0, 10000);
-                const auditSnippet = d.output ? d.output.substring(0, 4000) : '';
-                chapsContext += `\n\n=== ${id.toUpperCase()} APPROVED DRAFT & AUDIT ===\nStatus: ${d.status}\n[DRAFT EXCERPT]:\n${draftSnippet || 'No draft text'}\n[AUDIT CRITIQUE]:\n${auditSnippet || 'No audit critique'}\n`;
+                const draft = getActiveChapterText(id);
+                const audit = d ? d.output : '';
+                chapsContext += `\n\n--- [${id.toUpperCase()}] ---\n`;
+                chapsContext += `[Draft Content]:\n${draft ? draft.substring(0, 10000) : 'No draft submitted yet.'}\n`;
+                if (audit) {
+                    chapsContext += `[Prior Audit Review]:\n${audit.substring(0, 4000)}\n`;
+                }
             });
 
             if (coh.text && coh.text.trim()) {
-                chapsContext += `\n\n=== ADDITIONAL COHERENCE NOTES / INPUT ===\n${coh.text.substring(0, 10000)}\n`;
+                chapsContext += `\n\n=== ADDITIONAL COHERENCE USER NOTES ===\n${coh.text.substring(0, 8000)}\n`;
             }
 
-            const userPrompt = `AUDIT THE FOLLOWING EVALUATED THESIS CHAPTERS FOR CROSS-CHAPTER COHERENCE AND THE GOLDEN THREAD:
+            const userPrompt = `ORCHESTRATE THE MULTI-AGENT DIALECTIC DEBATE (AGENT 1 VS AGENT 2 VS AGENT 3) ON THE FOLLOWING CHAPTERS:
 ${chapsContext}
 
-Evaluated Chapters: ${chapNames || 'Provided inputs'}
-Pending Chapters: ${['ch1','ch2','ch3','ch4','ch5'].filter(id => !approvedChapterIds.includes(id)).map(id => id.toUpperCase()).join(', ') || 'None (All chapters audited)'}
-
-Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Changes following the exact structure specified.`;
+Evaluated Chapters: ${chapNames}
+Please conduct the full 3-round dialectic debate where Dr. Vance, Prof. Sterling, and Dr. Chen argue each other to determine the best coherence result, then deliver the settled Golden Thread consensus and chapter-by-chapter modifications.`;
 
             try {
                 const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                 coh.output = responseText;
                 coh.parsedChapters = parseCoherenceChapters(responseText);
-                coh.evaluatedChapters = approvedChapterIds;
+                coh.debateTranscript = coh.parsedChapters.debate || '';
+                coh.settledConsensus = coh.parsedChapters.matrix || '';
+                coh.evaluatedChapters = activeIds;
                 coh.status = 'Approved';
                 coh.isRunning = false;
-                showToast(`✨ <strong>Coherence Master</strong> audit completed across ${approvedChapterIds.length} chapter(s)!`, 'success');
+                showToast(`✨ <strong>Coherence Master</strong> debate settled across ${activeIds.length} chapter(s)! Automatically launching <strong>Master Tribunal</strong>...`, 'success');
+
+                renderSidebar();
+                if (state.activeTab === 'coherence' || state.activeTab === 'correction' || state.activeTab === 'tribunal') {
+                    renderWorkspace();
+                }
+
+                // AUTOMATIC CHAIN: Once coherence settles, automatically run Master Tribunal!
+                setTimeout(() => {
+                    runFullTribunal(true);
+                }, 1200);
+
             } catch (e) {
-                coh.output = `**Coherence Master audit failed:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
+                coh.output = `**Coherence Master debate failed:**\n\n${e.message}\n\n*Click "Manage Keys" to verify your Gemini API key pool.*`;
                 coh.isRunning = false;
                 showToast(`Coherence Master failed: ${e.message}`, 'error');
-            }
-
-            renderSidebar();
-            if (state.activeTab === 'coherence' || state.activeTab === 'correction' || state.activeTab === 'tribunal') {
-                renderWorkspace();
+                renderSidebar();
+                if (state.activeTab === 'coherence' || state.activeTab === 'correction' || state.activeTab === 'tribunal') {
+                    renderWorkspace();
+                }
             }
         }
 
@@ -5097,25 +5367,21 @@ Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Cha
             });
         }
 
-        async function runFullTribunal() {
+        async function runFullTribunal(isAuto = false) {
             if (state.data.tribunal.isRunning) return;
-            const approvedAgents = systemAgents.filter(a => state.data[a.id].status === 'Approved');
-            const pendingAgents = systemAgents.filter(a => state.data[a.id].status !== 'Approved');
+
+            const submittedChapterIds = getSubmittedChapterIds();
+            const cohOutput = state.data.coherence.output || '';
+            const approvedAgents = systemAgents.filter(a => state.data[a.id].status === 'Approved' || (state.data[a.id].text && state.data[a.id].text.length > 50));
             const readyCount = approvedAgents.length;
 
-            if (readyCount === 0) {
-                alert("Please complete and approve at least one chapter review before running the Master Tribunal.");
-                return;
-            }
-
-            const isFull = readyCount === systemAgents.length;
             state.data.tribunal.isRunning = true;
             renderSidebar();
             renderWorkspace();
 
             const btn = document.getElementById('btn-tribunal');
             if (btn) {
-                btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Synthesizing (${readyCount}/${systemAgents.length})...`;
+                btn.innerHTML = `<div class="loader mr-2 border-t-white border-white/30"></div> Deliberating (${readyCount}/${systemAgents.length})...`;
                 btn.classList.add('opacity-75', 'cursor-not-allowed', 'pointer-events-none');
             }
 
@@ -5126,38 +5392,70 @@ Please provide your rigorous Chapter-by-Chapter Coherence Audit and Required Cha
                 tribOutput.innerHTML = `
                     <div class="flex items-center gap-3 text-accent-purple">
                         <div class="loader border-t-accent-purple"></div> 
-                        <span>The Master Tribunal is deliberating on ${readyCount} approved component(s) (${isFull ? 'Full Consensus' : 'Partial Stage Consensus'})...</span>
+                        <span>The Master Tribunal is arbitrating on Chapter 1, 2, and 3 debate consensus and auto-uploading critiques to Correction...</span>
                     </div>
                 `;
             }
 
             let aggregatedText = "";
-            approvedAgents.forEach(a => {
-                aggregatedText += `\n\n[${a.title} Output Summary]:\n` + state.data[a.id].output.substring(0, 3000);
+            submittedChapterIds.forEach(id => {
+                const d = state.data[id];
+                const draft = getActiveChapterText(id);
+                const audit = d ? d.output : '';
+                aggregatedText += `\n\n[CHAPTER ${id.toUpperCase()}]:\n` + (draft ? draft.substring(0, 3000) : '') + (audit ? `\nAudit Review:\n` + audit.substring(0, 2000) : '');
             });
 
-            const systemPrompt = `You are the Master Tribunal, the final academic arbiter for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
-            
-You have received audit evaluations for ${readyCount} component(s): ${approvedAgents.map(a => a.title).join(', ')}.
-${!isFull ? `Pending components not yet submitted: ${pendingAgents.map(a => a.title).join(', ')}.` : 'All thesis components have been audited.'}
+            if (cohOutput) {
+                aggregatedText += `\n\n[COHERENCE MASTER MULTI-AGENT DEBATE & SETTLED CONSENSUS]:\n` + cohOutput.substring(0, 10000);
+            }
 
-Your job is to:
-1. Provide a "${isFull ? 'Master Consensus Review' : 'Partial Stage Consensus Review'}" summarizing the academic readiness, methodological rigor, and theoretical alignment of the evaluated sections.
-2. Evaluate APA 7th Edition compliance across the provided analyses.
-3. ${!isFull ? 'Identify cross-chapter gaps and offer concrete recommendations for the pending chapters (' + pendingAgents.map(a => a.title).join(', ') + ') to ensure seamless alignment.' : 'Evaluate the holistic "Golden Thread" across all 5 chapters and research objectives.'}
-4. Act as an expert "Academic Humanizer" to point out any robotic phrasing or synthetic tone.
-5. Provide a ${isFull ? 'final defense-readiness score' : 'current stage milestone progress score'} out of 100 with clear justification.
+            const systemPrompt = `You are the Master Tribunal, the supreme academic arbiter for a PhD thesis titled "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction".
 
-Format clearly in structured GitHub Markdown with bold headings and bullet points.`;
+Your mission is to evaluate the cross-chapter consensus from the Multi-Agent Coherence Debate (Agent 1, Agent 2, Agent 3) and provide the definitive defense-readiness verdict.
 
-            const userPrompt = `Here are the audit critiques from the evaluated agents:\n\n${aggregatedText}\n\nPlease generate the Master Tribunal ${isFull ? 'Full Consensus' : 'Partial Consensus Milestone'} Report.`;
+CRITICAL DIRECTIVE: YOU MUST PARTITION YOUR CRITIQUE CHAPTER-BY-CHAPTER.
+The student requires explicit correction directives chapter by chapter so they can be auto-uploaded directly into the Correction Studio.
+
+MANDATORY OUTPUT FORMAT:
+You MUST structure your arbitration using these exact markdown headers:
+
+### MASTER TRIBUNAL CONSENSUS & DEFENSE READINESS VERDICT
+- **Defense Readiness Score**: [Score out of 100 with clear doctoral justification]
+- **Holistic Golden Thread Verdict**: [Assessment of problem-theory-methodology synthesis]
+- **APA 7th Edition & Academic Tone Compliance**: [Evaluation of rigor and style]
+
+### CHAPTER 1 TRIBUNAL CRITIQUE & CORRECTION REQUIREMENTS
+- **Required Actionable Corrections**: [Specific bullet points of mandatory revisions for Chapter 1]
+- **Core Focus**: Problem formulation, DAN 2.0 policy imperatives, smallholder demographic framing in Melaka.
+
+### CHAPTER 2 TRIBUNAL CRITIQUE & CORRECTION REQUIREMENTS
+- **Required Actionable Corrections**: [Specific bullet points of mandatory revisions for Chapter 2]
+- **Core Focus**: TRAM framework, TAM, TRI, sequential trust and satisfaction mediation, age moderation.
+
+### CHAPTER 3 TRIBUNAL CRITIQUE & CORRECTION REQUIREMENTS
+- **Required Actionable Corrections**: [Specific bullet points of mandatory revisions for Chapter 3]
+- **Core Focus**: Cross-sectional sampling in Melaka, G*Power n=256 statistical power, PLS-SEM indicator reliability and validity.
+
+${submittedChapterIds.includes('ch4') ? `### CHAPTER 4 TRIBUNAL CRITIQUE & CORRECTION REQUIREMENTS
+- **Required Actionable Corrections**: [Specific bullet points of mandatory revisions for Chapter 4]
+` : ''}
+${submittedChapterIds.includes('ch5') ? `### CHAPTER 5 TRIBUNAL CRITIQUE & CORRECTION REQUIREMENTS
+- **Required Actionable Corrections**: [Specific bullet points of mandatory revisions for Chapter 5]
+` : ''}
+`;
+
+            const userPrompt = `Here is the comprehensive thesis evidence and Coherence Master multi-agent debate consensus:\n\n${aggregatedText}\n\nPlease generate the Master Tribunal Consensus Report with explicit chapter-by-chapter correction requirements.`;
 
             try {
                 const responseText = await fetchGeminiWithRotation(systemPrompt, userPrompt);
                 state.data.tribunal.output = responseText;
                 state.data.tribunal.status = 'Approved';
                 state.data.tribunal.isRunning = false;
-                showToast(`Master Tribunal Consensus generated (${readyCount}/${systemAgents.length} components)!`, 'success');
+                showToast(`Master Tribunal Consensus generated! Auto-uploading chapter-by-chapter critiques to Correction...`, 'success');
+
+                // AUTO-UPLOAD DIRECTLY TO CORRECTION STUDIO CHAPTER BY CHAPTER
+                autoUploadTribunalToCorrection(responseText);
+
             } catch(e) {
                 state.data.tribunal.output = `**Tribunal synthesis failed:**\n\n${e.message}`;
                 state.data.tribunal.isRunning = false;
@@ -5165,7 +5463,7 @@ Format clearly in structured GitHub Markdown with bold headings and bullet point
             }
 
             renderSidebar();
-            if (state.activeTab === 'tribunal') {
+            if (state.activeTab === 'tribunal' || state.activeTab === 'correction') {
                 renderWorkspace();
             }
         }
