@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>PhD Thesis Research Studio</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -50,7 +50,7 @@
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
                     colors: {
-                        dark: { 900: '#0f172a', 800: '#1e293b', 750: '#283548', 700: '#334155', 600: '#475569' },
+                        dark: { 900: '#0f172a', 850: '#172033', 800: '#1e293b', 750: '#283548', 700: '#334155', 600: '#475569' },
                         accent: { blue: '#3b82f6', green: '#10b981', teal: '#14b8a6', purple: '#8b5cf6', pink: '#ec4899', amber: '#f59e0b' }
                     }
                 }
@@ -58,11 +58,33 @@
         }
     </script>
     <style>
+        /* Anti-Offset & Zero Horizontal Scroll for All Viewports */
+        html, body {
+            max-width: 100vw;
+            overflow-x: hidden !important;
+            position: relative;
+            -webkit-text-size-adjust: 100%;
+        }
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #64748b; }
         
+        /* Clean Horizontal Scrolling Without Visible Scrollbar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Responsive Markdown & Content Flow */
+        .markdown-body {
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            word-break: break-word;
+        }
         .markdown-body h1, .markdown-body h2, .markdown-body h3 { color: #f8fafc; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; }
         .markdown-body h1 { font-size: 1.5em; }
         .markdown-body h2 { font-size: 1.25em; border-bottom: 1px solid #334155; padding-bottom: 0.3em; }
@@ -70,9 +92,30 @@
         .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
         .markdown-body strong { color: #e2e8f0; }
         .markdown-body blockquote { border-left: 4px solid #8b5cf6; padding-left: 1rem; color: #94a3b8; font-style: italic; margin: 1rem 0; }
-        .markdown-body table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+        
+        /* Table Safe Scroll on Narrow Devices */
+        .markdown-body table {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
         .markdown-body th, .markdown-body td { border: 1px solid #334155; padding: 0.5rem 0.75rem; text-align: left; }
         .markdown-body th { background-color: #1e293b; color: #f1f5f9; }
+
+        /* Preformatted Code & Diagram Wrapping */
+        .markdown-body pre {
+            max-width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .markdown-body img { max-width: 100%; height: auto; }
+        .mermaid, .mermaid svg { max-width: 100% !important; height: auto !important; }
 
         .loader {
             border: 3px solid #334155;
@@ -84,16 +127,26 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Notification Toast */
+        /* Responsive Notification Toast Container */
         #toast-container {
             position: fixed;
-            bottom: 1.5rem;
-            right: 1.5rem;
+            bottom: 1rem;
+            right: 1rem;
+            left: 1rem;
+            max-width: calc(100vw - 2rem);
             z-index: 100;
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
             pointer-events: none;
+        }
+        @media (min-width: 640px) {
+            #toast-container {
+                left: auto;
+                right: 1.5rem;
+                bottom: 1.5rem;
+                max-width: 24rem;
+            }
         }
         .toast {
             pointer-events: auto;
@@ -106,29 +159,38 @@
         }
     </style>
 </head>
-<body class="bg-dark-900 text-slate-200 font-sans h-screen flex overflow-hidden selection:bg-accent-purple selection:text-white">
+<body class="bg-dark-900 text-slate-200 font-sans h-screen flex overflow-hidden selection:bg-accent-purple selection:text-white max-w-full relative">
 
     <!-- Toast Notification Container -->
     <div id="toast-container"></div>
 
-    <!-- Sidebar Navigation -->
-    <aside class="w-72 bg-dark-800 border-r border-dark-700 flex flex-col flex-shrink-0 z-20 shadow-xl">
-        <div class="p-6 border-b border-dark-700 flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-purple to-accent-blue flex items-center justify-center shadow-lg shadow-purple-500/20">
-                <i class="fa-solid fa-microchip text-white text-xl"></i>
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div id="sidebar-backdrop" onclick="toggleMobileSidebar(false)" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 hidden md:hidden transition-opacity"></div>
+
+    <!-- Sidebar Navigation (Drawer on Mobile, Pinned on Desktop) -->
+    <aside id="main-sidebar" class="fixed inset-y-0 left-0 z-40 w-72 bg-dark-800 border-r border-dark-700 flex flex-col flex-shrink-0 shadow-2xl transform -translate-x-full md:relative md:translate-x-0 transition-transform duration-300 ease-in-out">
+        <div class="p-4 sm:p-6 border-b border-dark-700 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-accent-purple to-accent-blue flex items-center justify-center shadow-lg shadow-purple-500/20 shrink-0">
+                    <i class="fa-solid fa-microchip text-white text-xl"></i>
+                </div>
+                <div class="min-w-0">
+                    <h1 class="text-sm font-bold text-white tracking-wide truncate">PhD Studio AI</h1>
+                    <p class="text-[10px] text-slate-400 uppercase tracking-wider truncate">Multi-Agent System</p>
+                </div>
             </div>
-            <div>
-                <h1 class="text-sm font-bold text-white tracking-wide">PhD Studio AI</h1>
-                <p class="text-[10px] text-slate-400 uppercase tracking-wider">Multi-Agent System</p>
-            </div>
+            <!-- Mobile Close Button -->
+            <button onclick="toggleMobileSidebar(false)" class="md:hidden text-slate-400 hover:text-white p-2 rounded-lg hover:bg-dark-750 transition-colors" aria-label="Close Navigation">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
         </div>
 
         <!-- Agent Tabs Navigation -->
         <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1" id="sidebar-nav"></nav>
 
         <!-- API Pool Quick Status & Settings Button -->
-        <div class="p-4 border-t border-dark-700 bg-dark-900/60 flex flex-col gap-2.5">
-            <button onclick="openKeyManagerModal()" class="w-full text-left p-3 rounded-xl bg-dark-800 hover:bg-dark-700 border border-dark-600 transition-all group shadow-sm">
+        <div class="p-3 sm:p-4 border-t border-dark-700 bg-dark-900/60 flex flex-col gap-2.5">
+            <button onclick="openKeyManagerModal(); if (window.innerWidth < 768) toggleMobileSidebar(false);" class="w-full text-left p-3 rounded-xl bg-dark-800 hover:bg-dark-700 border border-dark-600 transition-all group shadow-sm">
                 <div class="flex items-center justify-between mb-1.5">
                     <span class="text-xs font-semibold text-slate-200 flex items-center gap-2">
                         <i class="fa-solid fa-arrows-rotate text-accent-purple group-hover:rotate-180 transition-transform duration-500"></i>
@@ -153,52 +215,60 @@
     </aside>
 
     <!-- Main Workspace -->
-    <main class="flex-1 flex flex-col h-full relative overflow-hidden">
+    <main class="flex-1 flex flex-col h-full relative overflow-hidden min-w-0 max-w-full">
         
-        <!-- Personalized Header -->
-        <header class="bg-dark-800/80 backdrop-blur-md border-b border-dark-700 flex items-center justify-between px-8 py-3.5 sticky top-0 z-10">
-            <div>
-                <h2 class="text-lg font-bold text-white tracking-wide flex items-center gap-2">
-                    Welcome, Ts. Hj Nor Azhar Bin Abdul Hamid (MBA) (B.C.M) to your PhD Research Studio
-                </h2>
-                <p class="text-xs text-accent-teal mt-0.5 font-medium">
-                    Thesis: "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction"
-                </p>
+        <!-- Personalized Responsive Header -->
+        <header class="bg-dark-800/80 backdrop-blur-md border-b border-dark-700 flex items-center justify-between px-3 sm:px-5 md:px-8 py-2.5 sm:py-3.5 sticky top-0 z-10 gap-2">
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                <!-- Mobile Hamburger Button -->
+                <button onclick="toggleMobileSidebar(true)" class="md:hidden text-slate-300 hover:text-white p-2 rounded-xl bg-dark-750 border border-dark-600 hover:bg-dark-700 shrink-0 transition-colors" aria-label="Open Navigation">
+                    <i class="fa-solid fa-bars text-base"></i>
+                </button>
+                <div class="min-w-0 flex-1">
+                    <h2 class="text-xs sm:text-base md:text-lg font-bold text-white tracking-wide truncate flex items-center gap-2">
+                        <span class="truncate">Welcome, Ts. Hj Nor Azhar Bin Abdul Hamid (MBA) (B.C.M)</span>
+                    </h2>
+                    <p class="text-[10px] sm:text-xs text-accent-teal mt-0.5 font-medium truncate">
+                        Thesis: "AI Chatbot Adoption Readiness in Malaysian Agriculture: Mediating Roles of Acceptance, Trust, and Satisfaction"
+                    </p>
+                </div>
             </div>
-            <div class="flex items-center gap-3">
-                <!-- Current Active Key Indicator -->
-                <div id="header-active-key-pill" onclick="openKeyManagerModal()" class="cursor-pointer hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-dark-700 hover:border-accent-purple transition-all text-xs">
+            <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                <!-- Current Active Key Indicator (Hidden on small mobile) -->
+                <div id="header-active-key-pill" onclick="openKeyManagerModal()" class="cursor-pointer hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-dark-700 hover:border-accent-purple transition-all text-xs">
                     <div class="w-2 h-2 rounded-full bg-accent-green animate-pulse" id="header-status-dot"></div>
                     <span class="text-slate-400">Rotator:</span>
-                    <span class="text-slate-200 font-medium" id="header-active-account">Canvas Default</span>
+                    <span class="text-slate-200 font-medium truncate max-w-[110px]" id="header-active-account">Canvas Default</span>
                     <span class="px-1.5 py-0.2 rounded text-[10px] bg-accent-purple/20 text-accent-purple font-semibold" id="header-active-tier-tag">Free</span>
                 </div>
 
                 <!-- Run All Concurrently Button -->
-                <button onclick="runAllChaptersConcurrently()" class="flex items-center gap-2 bg-gradient-to-r from-accent-blue to-teal-600 hover:from-blue-500 hover:to-teal-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-md shadow-blue-500/20 transition-all active:scale-95" title="Run all ready chapters in parallel">
+                <button onclick="runAllChaptersConcurrently()" class="flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-accent-blue to-teal-600 hover:from-blue-500 hover:to-teal-500 text-white text-xs font-semibold px-2.5 sm:px-3.5 py-2 rounded-lg shadow-md shadow-blue-500/20 transition-all active:scale-95 shrink-0" title="Run all ready chapters in parallel">
                     <i class="fa-solid fa-bolt text-amber-300"></i>
-                    <span>Run All Concurrently</span>
+                    <span class="hidden sm:inline">Run All Concurrently</span>
+                    <span class="sm:hidden">Run All</span>
                 </button>
 
-                <button onclick="openKeyManagerModal()" class="flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-xs font-semibold px-3.5 py-2 rounded-lg shadow-md shadow-purple-500/20 transition-all">
+                <button onclick="openKeyManagerModal()" class="flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-xs font-semibold px-2.5 sm:px-3.5 py-2 rounded-lg shadow-md shadow-purple-500/20 transition-all shrink-0">
                     <i class="fa-solid fa-key"></i>
-                    <span>Manage Keys</span>
+                    <span class="hidden sm:inline">Manage Keys</span>
+                    <span class="sm:hidden">Keys</span>
                 </button>
             </div>
         </header>
 
         <!-- Content Area -->
-        <div id="workspace-container" class="flex-1 overflow-y-auto p-8 relative">
+        <div id="workspace-container" class="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-5 md:p-8 relative max-w-full">
             <!-- Dynamic content injected by JavaScript -->
         </div>
     </main>
 
     <!-- Gemini Key Rotation & Tier Pool Manager Modal -->
-    <div id="key-manager-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-dark-800 border border-dark-700 rounded-2xl w-full max-w-4xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+    <div id="key-manager-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden">
+        <div class="bg-dark-800 border border-dark-700 rounded-xl sm:rounded-2xl w-full max-w-4xl max-h-[94vh] shadow-2xl flex flex-col overflow-hidden animate-[fadeIn_0.2s_ease-out]">
             
             <!-- Modal Header -->
-            <div class="p-6 border-b border-dark-700 flex items-center justify-between bg-dark-900/50">
+            <div class="p-4 sm:p-6 border-b border-dark-700 flex items-center justify-between bg-dark-900/50">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-purple to-accent-blue flex items-center justify-center text-white shadow-lg shadow-purple-500/20">
                         <i class="fa-solid fa-arrows-spin text-lg"></i>
@@ -1614,11 +1684,34 @@
         }
 
         // ==========================================
+        // MOBILE RESPONSIVE NAVIGATION DRAWER
+        // ==========================================
+
+        function toggleMobileSidebar(force) {
+            const sidebar = document.getElementById('main-sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (!sidebar) return;
+            const isCurrentlyOpen = !sidebar.classList.contains('-translate-x-full');
+            const shouldOpen = typeof force === 'boolean' ? force : !isCurrentlyOpen;
+            if (shouldOpen) {
+                sidebar.classList.remove('-translate-x-full');
+                if (backdrop) backdrop.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                if (backdrop) backdrop.classList.add('hidden');
+            }
+        }
+        if (typeof window !== 'undefined') {
+            window.toggleMobileSidebar = toggleMobileSidebar;
+        }
+
+        // ==========================================
         // WORKSPACE RENDERING
         // ==========================================
 
         function renderSidebar() {
             const nav = document.getElementById('sidebar-nav');
+            if (!nav) return;
             nav.innerHTML = '';
             
             systemAgents.forEach(agent => {
@@ -1629,6 +1722,7 @@
                 btn.className = `w-full text-left px-4 py-3 rounded-xl mb-1 flex items-center gap-3 transition-all ${isActive ? 'bg-dark-700 text-white shadow-md' : 'text-slate-400 hover:bg-dark-700/50 hover:text-slate-200'}`;
                 btn.onclick = () => {
                     state.activeTab = agent.id;
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) toggleMobileSidebar(false);
                     renderSidebar();
                     renderWorkspace();
                 };
@@ -1655,6 +1749,7 @@
             tribBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-4 flex items-center gap-3 transition-all border border-accent-purple/30 ${isTribunalActive ? 'bg-accent-purple/20 text-white border-accent-purple/50' : 'text-accent-purple hover:bg-accent-purple/10'}`;
             tribBtn.onclick = () => {
                 state.activeTab = 'tribunal';
+                if (typeof window !== 'undefined' && window.innerWidth < 768) toggleMobileSidebar(false);
                 renderSidebar();
                 renderWorkspace();
             };
@@ -1675,6 +1770,7 @@
             corrBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-2 flex items-center gap-3 transition-all border border-teal-500/30 ${isCorrectionActive ? 'bg-accent-teal/20 text-white border-accent-teal/50' : 'text-accent-teal hover:bg-accent-teal/10'}`;
             corrBtn.onclick = () => {
                 state.activeTab = 'correction';
+                if (typeof window !== 'undefined' && window.innerWidth < 768) toggleMobileSidebar(false);
                 renderSidebar();
                 renderWorkspace();
             };
@@ -1696,6 +1792,7 @@
             rephraseBtn.className = `w-full text-left px-4 py-3 rounded-xl mt-2 flex items-center gap-3 transition-all border border-indigo-500/30 ${isRephraserActive ? 'bg-indigo-600/20 text-white border-indigo-500/60' : 'text-indigo-400 hover:bg-indigo-500/10'}`;
             rephraseBtn.onclick = () => {
                 state.activeTab = 'rephraser';
+                if (typeof window !== 'undefined' && window.innerWidth < 768) toggleMobileSidebar(false);
                 renderSidebar();
                 renderWorkspace();
             };
@@ -1760,7 +1857,7 @@
 
             const html = `
                 <div class="max-w-6xl mx-auto space-y-6 animate-[fadeIn_0.3s_ease-in-out]">
-                    <div class="flex justify-between items-end mb-2">
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-end gap-3 mb-2">
                         <div>
                             <h3 class="text-2xl font-bold text-white mb-1"><i class="fa-solid ${agent.icon} ${agent.color} mr-3"></i>${agent.title}</h3>
                             <p class="text-sm text-slate-400">${agent.desc}</p>
@@ -1959,16 +2056,16 @@
                         <span><strong>Full Consensus Mode:</strong> All ${systemAgents.length} components approved! Ready for complete defense-readiness synthesis and scoring.</span>
                     </div>` : ''}
 
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
                         ${cardsHtml}
                     </div>
 
-                    <div class="bg-dark-800 border border-accent-purple/30 rounded-xl shadow-lg shadow-purple-500/10 p-6 flex flex-col sm:flex-row gap-6 items-center justify-between">
+                    <div class="bg-dark-800 border border-accent-purple/30 rounded-xl shadow-lg shadow-purple-500/10 p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-start sm:items-center justify-between">
                         <div>
-                            <h4 class="text-lg font-semibold text-white mb-1">${allReady ? 'Full Consensus Review' : 'Consensus Review (Partial Approved Allowed)'}</h4>
-                            <p class="text-sm text-slate-400">Simulates a peer-review debate across evaluated agents and outputs a unified critique.</p>
+                            <h4 class="text-base sm:text-lg font-semibold text-white mb-1">${allReady ? 'Full Consensus Review' : 'Consensus Review (Partial Approved Allowed)'}</h4>
+                            <p class="text-xs sm:text-sm text-slate-400">Simulates a peer-review debate across evaluated agents and outputs a unified critique.</p>
                         </div>
-                        <button id="btn-tribunal" onclick="runFullTribunal()" class="whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg shadow-purple-500/25 transition-all ${!anyReady ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}">
+                        <button id="btn-tribunal" onclick="runFullTribunal()" class="w-full sm:w-auto justify-center whitespace-nowrap flex items-center gap-2 bg-gradient-to-r from-accent-purple to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white px-5 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold shadow-lg shadow-purple-500/25 transition-all ${!anyReady ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}">
                             <i class="fa-solid fa-gavel"></i> ${allReady ? 'Run Full Consensus Review' : `Run Consensus Review (${readyCount}/${systemAgents.length} Ready)`}
                         </button>
                     </div>
@@ -2517,33 +2614,33 @@
 
                         <!-- Chapter Tabs Navigation -->
                         <div class="bg-dark-800 px-4 py-3 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
-                            <div class="flex flex-wrap items-center gap-1.5">
+                            <div class="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 no-scrollbar shrink-0">
                                 <button onclick="switchCorrectionResultTab('all')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'all' ? (isA7 ? 'bg-purple-600 text-white' : 'bg-accent-teal text-white') + ' shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'all' ? (isA7 ? 'bg-purple-600 text-white' : 'bg-accent-teal text-white') + ' shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-layer-group"></i> All Chapters
                                 </button>
                                 <button onclick="switchCorrectionResultTab('ch1')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 ${hasCh1 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchCorrectionResultTab('ch2')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-book-open text-teal-400"></i> Chapter 2 ${hasCh2 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchCorrectionResultTab('ch3')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-flask text-purple-400"></i> Chapter 3 ${hasCh3 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchCorrectionResultTab('ch4')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-chart-pie text-pink-400"></i> Chapter 4 ${hasCh4 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchCorrectionResultTab('ch5')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 ${hasCh5 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchCorrectionResultTab('coherence')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'coherence' ? 'bg-emerald-600 text-white shadow-md' : 'bg-dark-700 text-emerald-400 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'coherence' ? 'bg-emerald-600 text-white shadow-md' : 'bg-dark-700 text-emerald-400 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-network-wired"></i> Coherence Changes ${state.data.coherence.output ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                             </div>
@@ -3016,8 +3113,8 @@
                         </div>
 
                         <!-- Quick Preset Jump Bar -->
-                        <div class="flex flex-wrap items-center gap-1.5 bg-dark-900/70 border border-dark-750 rounded-xl p-2.5">
-                            <span class="text-[11px] text-slate-400 font-semibold mr-1 flex items-center gap-1">
+                        <div class="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 no-scrollbar bg-dark-900/70 border border-dark-750 rounded-xl p-2.5">
+                            <span class="text-[11px] text-slate-400 font-semibold mr-1 flex items-center gap-1 shrink-0 whitespace-nowrap">
                                 <i class="fa-solid fa-bolt text-amber-400"></i> Quick Presets:
                             </span>
                             ${[
@@ -3033,7 +3130,7 @@
                             ].map(p => `
                                 <button type="button" 
                                         onclick="setRephraserPercent(${p.val})" 
-                                        class="text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all ${customPercent === p.val ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow-sm' : `bg-dark-800 border-dark-700 ${p.cls}`}">
+                                        class="text-[11px] font-mono px-2.5 py-1 rounded-lg border transition-all shrink-0 whitespace-nowrap ${customPercent === p.val ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow-sm' : `bg-dark-800 border-dark-700 ${p.cls}`}">
                                     ${p.label}
                                 </button>
                             `).join('')}
@@ -3123,29 +3220,29 @@
 
                         <!-- Chapter Tabs Navigation (All Chapters, Ch 1 - Ch 5) -->
                         <div class="bg-dark-800 px-4 py-3 border-b border-dark-700 flex flex-wrap items-center justify-between gap-3">
-                            <div class="flex flex-wrap items-center gap-1.5">
+                            <div class="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1 no-scrollbar shrink-0">
                                 <button onclick="switchRephraserResultTab('all')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-layer-group"></i> All Chapters
                                 </button>
                                 <button onclick="switchRephraserResultTab('ch1')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch1' ? 'bg-blue-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-file-lines text-blue-400"></i> Chapter 1 ${hasCh1 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchRephraserResultTab('ch2')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch2' ? 'bg-teal-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-book-open text-teal-400"></i> Chapter 2 ${hasCh2 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchRephraserResultTab('ch3')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch3' ? 'bg-purple-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-flask text-purple-400"></i> Chapter 3 ${hasCh3 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchRephraserResultTab('ch4')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch4' ? 'bg-pink-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-chart-pie text-pink-400"></i> Chapter 4 ${hasCh4 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                                 <button onclick="switchRephraserResultTab('ch5')" 
-                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 whitespace-nowrap flex items-center gap-1.5 ${activeResultTab === 'ch5' ? 'bg-amber-600 text-white shadow-md' : 'bg-dark-700 text-slate-300 hover:bg-dark-600'}">
                                     <i class="fa-solid fa-bullseye text-amber-400"></i> Chapter 5 ${hasCh5 ? '<i class="fa-solid fa-circle-check text-accent-green text-[10px]"></i>' : ''}
                                 </button>
                             </div>
